@@ -44,3 +44,55 @@ Mens en modulær monolitt (hvor koden er godt strukturert i separate moduler, me
 - Uavhengig distribusjon og skalerbarhet: Selv om det ikke er et behov akkurat nå, gir mikrotjenester muligheten til uavhengig distribusjon av individuelle tjenester. Dette betyr at en endring i f.eks. AutopilotService ikke krever nedetid eller redeploy av SimulatorService. Det åpner også for selektiv skalering av tjenester som krever mer ressurser.
 
 Til tross for økt kompleksitet i infrastruktur og drift som mikrotjenestesystemer ofte medfører(kanskje spesielt for et soloprosjekt), veier de pedagogiske fordelene og den langvarige fleksibiliteten opp.
+
+## 3. Systemkomponenter
+
+O-Sim er en samling av løst koblede komponenter som sammen sørger for simulering- og kontrollfunksjonalitet. Arkitekturen bygger rundt en meldingsbuss som fasiliterer asynkron kommunikasjon mellom mikrotjenestene. Figuren nedenfor illustrerer systemets hovedkomponenter og deres innbyrdes relasjoner.
+
+![systemarkitektur bilde](Systemarkitektur_O-Sim.svg)
+
+De viktigste komponentene er:
+
+### 3.1 NATS
+
+- Rolle og formål: NATS fungerer som den sentrale, høyytelses meldingsmekleren for all intern kommunikasjon mellom O-Sims mikrotjenester. Den muliggjør et løst koblet system der tjenester kan publisere informasjon uten å vite hvem som lytter, og abonnere på informasjon uten å vite hvem som publiserer.
+
+- Valg av NATS (vs. Kafka): Valget av NATS fremfor andre meldingsmeklere som Kafka ble gjort med utgangspunkt i O-Sims primære formål som et læringsprosjekt, og behovet for enkelhet og sanntidskommunikasjon.
+
+  - Enkelhet og lettvekt: NATS er betydelig enklere å sette opp, konfigurere og drifte sammenlignet med Kafka. Dette reduserer den infrastrukturelle kompleksiteten og lar fokuset ligge på applikasjonslogikken.
+
+  - Fokus på sanntid: NATS er optimalisert for lav latens og høy ytelse i "fire-and-forget" eller "request-reply" kommunikasjonsmønstre, hvor de nyeste dataene er viktigst og "at-most-once" levering er tilstrekkelig. Dette passer perfekt for en simulator som krever rask utveklsing av sensordata og kommandoer.
+
+  - Ressursvennlighet: Med lavere ressursbrukt (CPU, minne) er NATS et mer velegnet valg for å kjøre alle systemkomponenter lokalt i et Docker Compose-miljø.
+
+- Kommunikasjonsmønstre:
+
+  - Publish/Subscribe: Hovedmønsteret. Tjenester publiserer meldinger til spesifikke emner (topics), og andre tjenester som er interessert, abonnnerer på disse emnene. Dette tillater en-til-mange-kommunikasjon (f.eks. SimulatorService publiserer fartøydata som flere tjenester abonnerer på).
+
+  - Request/Reply: NATS støtter også et mønster for direkte forespørsel-svar, nyttig for mer synkron kommunikasjon der en tjeneste trenger et umiddelbart svar fra en annen (f.eks. for konfigurasjonsspørringer).
+
+- Fordeler i O-Sim (generelt):
+
+  - Løs kobling: Tjenestene er uavhengige av hverandre; de trenger bare å kjenne til NATS og meldingskontraktene. Dette øker robusthet og fleksibilitet.
+
+  - Asynkron kommunikasjon: Forbedrer systemet responsivitet og ytelse, da tjenester ikke blokkerer hverandre mens de venter på svar.
+
+  - Skalerbarhet: NATS er designet for å håndtere store volumer meldinger og kan enkelt skaleres for å møte fremtidige behov.
+
+  - Enkelhet: Enkel å sette opp og bruke i et Docker-miljø, noe som er fordelaktig for et læringsprosjekt.
+
+- NATS emner (eksempler på nøkkelemner):
+
+  - sim.sensor.nav: Fartøyets navigasjonsdata (posisjon, fart, kurs). Publiseres av SimulatorService.
+
+  - sim.sensors.env: Miljødata (vind, strøm). Publiseres av EnvironmentService.
+
+  - sim.commands.\*: Kommandoer til simulatoren eller autopiloten (f.eks. sim.commands.setcourse, sim.commands.rudder ). Publiseres av AutopilotService eller API Gateway.
+
+  - log.entries: Generiske loggmeldinger fra alle tjenester. Publiseres av relevante tjenester.
+
+  - alarm.triggers: Utløste alarmer. Publiseres av AlarmService.
+
+  - env.commands.setmode: Kommando for å bytte miljømodus i EnvironmentService.
+
+- Detaljerte kontrakter: De eksakte JSON-strukturene for meldingene definieres i docs/api-contracts.md og implementeres som C# DTO-er i shared/Osim.Shared.Messages.
