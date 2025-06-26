@@ -48,7 +48,7 @@ Alle tjenestene skal kunne kjøres som uavhengige Docker-containere.
 
 ## 6. Teknologivalg
 
-- **Språk:** C# (.NET 8), TypeScript (frontend)
+- **Språk:** C# (.NET 9), TypeScript (frontend)
 - **Kommunikasjon:** NATS (asynkron meldingsbasert)
 - **Frontend:** WPF (desktop), Next.js (web)
 - **Containere:** Docker Compose

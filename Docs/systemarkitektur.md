@@ -172,3 +172,67 @@ O-Sim består av flere dedikerte mikrotjenester, hver med et klart definert ansv
   - Siktforhold: Simulering av tåke, regn og/eller nattforhold som påvirker visuell navigasjon.
 
   - Eksterne data: Mulighet for å hente inn sanntidsdata fra eksterne APIer (f.eks. for vær og strøm) som et alternativ til full simulering.
+
+### 3.3.3. AutopilotService
+
+- Ansvar: Implementerer kontrollalgoritmer for å autonomt styre fartøyets kurs og/eller fart basert på settpunkter og innhentede sensordata. Den fungerer som "hjernen" som tar beslutninger for fartøyet.
+
+- Innkommende kommunikasjon (via NATS):
+
+  - Abonerer på sim.sensors.nav (fra SimulatorService) for å få fartøyets aktuelle posisjon, kurs og fart.
+
+  - Abonnerer på sim.sensors.env (fra EnvironmentService) for å ta hensyn til ytre påvirkninger.
+
+  - Mottar settpunkter for ønsket kurs/fart via sim.commands.setcourse, sim.commands.setspeed (publisert av API Gateway ved brukerinteraksjon).
+
+- Utgående kommunikasjon (via NATS):
+
+  - Publiserer kontrollkommandoer (f.eks. rorutslag, thrust) til sim.commands.rudder, sim.commands.thrust som SimulatorService da reagerer på.
+
+- Nøkkelfunksjonalitet:
+
+  - Implementering av PID-kontroller (eller lignende) for kursholding og fartsholding.
+
+  - Behandling av avvik mellom ønsket og faktisk tilstand.
+
+  - Generering av aktuator-kommandoer for simulator.
+
+### 3.3.4. AlarmService
+
+- Ansvar: Overvåker ulike datastrømmer i systemet for å detektere og varsle om uregelmessigheter, avvik eller kritiske hendelser.
+
+- Innkommende kommunikasjon (via NATS)
+
+  - Abonnerer på relevante emner som sim.sensors.nav, sim.sensors.env, log.entries, eller andre spesifikke data som krever overvåking for å identifisere avvik (f.eks. fartøy utenfor definert område, overskridelse av grenseverdier for fart/kurs).
+
+- Utgående kommunikasjon (via NATS):
+
+  - Publiserer alarmer og varsler til alarm.triggers for logging og presentasjon i Frontend GUI.
+
+- Nøkkelfunksjonalitet:
+
+  - Definering av regler for hva som utgjør en alarm.
+
+  - Kontinuerlig analyse av innkommende data mot disse reglene.
+
+  - Generering av alarmmeldinger med status og detaljer.
+
+### 3.3.5. LoggerService
+
+- Ansvar: Er systemet sentrale punkt for datapersistens. Den lagrer alle relevante simuleringsdata, kommandoer og hendelser for senere analyse, avspilling eller feilsøking.
+
+- Innkommende kommunikasjon (via NATS)
+
+  - Abonnerer på et bredt spekter av NATS-emner, inkludert, men ikke begrenset til, sim.sensors.nav, sim.sensors.env, sim.commands.\*, alarm.triggers, og log.entries. Målet er å fange opp all systemaktivitet.
+
+- Utgående kommunikasjon:
+
+  - Persisterer data til et valgt lagringdsmedium (f.eks. CSV-filer for enkelhet, eller en relasjonsdatabase som SQLite/PostgreSQL for mer strukturert lagring).
+
+- Nøkkelfunksjonalitet:
+
+  - Motta og deserialisere NATS-meldinger.
+
+  - Strukturert lagring av data.
+
+  - (Fremtidig): Funksjonalitet for å hente ut historisk data for visualisering eller analyse.
