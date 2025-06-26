@@ -64,7 +64,6 @@ Alle tjenestene skal kunne kjøres som uavhengige Docker-containere.
 ## 8. Notater og tanker
 
 - Tjenester bør være så uavhengige som mulig for å kunne utvikles og testes isolert.
-- Test Driven Development anbefales brukt fra starten.
 - Fokus på å lære mikrotjenestearkitektur like mye som å "få det ferdig".
 - Dokumentasjon og tegninger håndtegnes og/eller lages digitalt parallelt med utvikling.
 
