@@ -117,7 +117,7 @@ De viktigste komponentene er:
 
   - Lastbalansering: Kan fordelere trafikk mellom flere instanser av en mikrotjeneste, om nødvendig.
 
-## 3.3.
+## 3.3. Mikrotjenestene
 
 O-Sim består av flere dedikerte mikrotjenester, hver med et klart definert ansvar og som kommuniserer asynkront via NATS. Alle mikrotjenestene er utviklet i C# (.NET 9) og kjøres som separate Docker-containere.
 
@@ -236,3 +236,67 @@ O-Sim består av flere dedikerte mikrotjenester, hver med et klart definert ansv
   - Strukturert lagring av data.
 
   - (Fremtidig): Funksjonalitet for å hente ut historisk data for visualisering eller analyse.
+
+### 3.4 Frontend GUI
+
+- Rolle og formål: Frontend GUI representerer brukergrensesnittene for O-Sim-systemet. Hovedrollen er å gi brukere et interaktivt verktøy for å kontrollere fartøyet, visualisere simuleringsdata (som fartøyets posisjon og miljøforhold), og motta alarmer og statusmeldinger.
+
+- Implementasjon: Initialt vil en WPF-basert desktop-applikasjon bli utviklet for å utnytte .NET-økosystemet og gi en rik brukeropplevelse. Som et fremtidig steg er det planlagt å utvikle et webapp-basert dashbord med Next.js for å gi plattformuavhengig tilgang.
+
+- Kommunikasjon: All kommunikasjon mellom backend-tjenestene skjer via API Gateway (Traefik). Dette sikrer en abstrahert og frikoblet interaksjon, og lar frontend-applikasjonene konsumere REST-endepunkter for kommandoer og WebSocket-strømmer for sanntidsdata, uten direkte kjennskap til de individuelle mikrotjenestene.
+
+- Nøkkelfunksjonalitet:
+
+  - Presentasjon av sanntids navigasjonsdata (posisjon, fart, kurs).
+
+  - Visualisering av fartøyets bevegelse og miljødata på kart.
+
+  - Input for manuelle kommandoer og settpunkter til autopiloten.
+
+  - Visning av alarmer og loggmeldinger.
+
+## 4. Tverrgående aspekter
+
+### 4.1. Teknologi stack
+
+O-Sim er primært bygget på følgende teknologier:
+
+- Backend tjenester: C# (.NET 9). Valget av .NET 9 gir tilgang til de nyeste ytelsesforbedringene og utviklerverktøyene fra Microsoft, og sikrer en moderne og robust backend.
+
+- Frontend applikasjoner:
+
+  - Desktop GUI: WPF (Windows Presentation Foundation) med C#. Gir mulighet for en rik og responsiv desktop-opplevelse.
+
+  - Web Dashboard: Next.js med TypeScript. Tilbyr ett moderne, skalérbart og plattformuavhengig webgrensesnitt.
+
+- Kommunikasjon: NATS for intern, asynkron meldingsbasert kommunikasjon.
+
+- API Gateway: Traefik for ekstern HTTP/WebSocket-kommunikasjon og dynamisk ruteføring i Docker-miljøet.
+
+- Containerisering og orkestrering: Docker Compose for å definere og kjøre systemets ulike tjenester i isolerte containere lokalt.
+
+### 4.2. Kommunikasjonskontrakter
+
+For å sikre sømløs og robust kommunikasjon mellom de løst koblede mikrotjenestene, defineres strenge meldingskontrakter.
+
+- Formål: Disse kontraktene standardiserer formatet og innholdet i meldingene som utveksles over NATS. Dette sikrer at tjenester kan forstå hverandres data uten å ha dyp kjennskap til den interne implementasjonen.
+
+- Definisjon: De eksakte JSON-strukturene for alle viktige meldinger vil bli detaljert beskrevet i docs/api-contracts.md.
+
+- Implementasjon: I C# implementeres disse kontraktene som Data Transfer Objects (DTOs) i det delte prosjektet shared/OSim.Shared.Messages, noe som sikrer type-sikkerhet og forenkler serialisering/deserialisering.
+
+### 4.3. Konfigurasjonshåndtering
+
+Hver mikrotjeneste vil benytte en kombinasjon av følgende metoder for konfigurasjon:
+
+- Miljøvariabler: Primær metode for å injisere konfigurasjon som er spesifikk for kjøremiljøet (f.eks. NATS-tilkoblingsstrenger). Dette forenkler distribusjon med Docker Compose.
+
+- appsettings.json: Standard .NET-konfigurasjonsfil for applikasjonsspesifikke innstillinger som ikke endres mellom miljøer, eller som kan overstyres av miljøvariabler.
+
+### 4.4 Observabilitet (logging og health checks)
+
+Et mikrotjenestesystem krever gode verktøy for observabilitet for å forstå systemet oppførsel, feilsøke problemer og overvåke ytelse.
+
+- Sentralisert logging: Alle mikrotjenestene vil bruke et standard .NET logging-rammeverk (Microsoft.Extensions.Logging) for å generere loggmeldinger. Disse loggene vil deretter publiseres til NATS (til emnet log.entries) og abonneres på av LoggerService for sentralisert persistens og analyse. Dette muliggjør en samlet oversikt over systemets aktivitet.
+
+- Health checks: Hver mikrotjeneste vil eksponere et enkelt HTTP-endepunkt (f.eks /health) som indikerer tjenestens operative status. Dette er avgjørende for Docker Compose og Traefik for å kunne overvåke tjenestenes helse, og eventuelt starte dem på nytt om de blir unresponsive.
