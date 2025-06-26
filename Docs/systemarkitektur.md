@@ -6,297 +6,265 @@ Dette dokumentet beskriver systemarkitekturen for O-Sim, et personlig utviklings
 
 Gjennom dette prosjektet ønsker jeg å tilegne meg erfaring med:
 
-- Modulær systemdesign: Hvordan dele et komplekst problem inn i mindre, håndterbare deler.
-- Mikrotjenester: Forstå prinsipper for uavhengige tjenester, deres fordeler, utfordringer og eventuelle ulemper.
-- Meldingsbasert kommunikasjon: Erfaring med asynkron kommunikasjon og publish/subscribe-mønstre via NATS.
-- Praktisk utvikling: Fra konsept til implementering, inkludert testing og distribusjon med Docker.
+- **Modulær systemdesign**: Hvordan dele et komplekst problem inn i mindre, håndterbare deler.
+- **Mikrotjenester**: Forstå prinsipper for uavhengige tjenester, deres fordeler, utfordringer og eventuelle ulemper.
+- **Meldingsbasert kommunikasjon**: Erfaring med asynkron kommunikasjon og publish/subscribe-mønstre via NATS.
+- **Praktisk utvikling**: Fra konsept til implementering, inkludert testing og distribusjon med Docker.
 
-O-Sim vil gi mulighet til å kontrollere fartøyet via autopilot, visualisere reisen på kart, og hente inn simulerte sensordata. De kommende seksjonene vil gi en oversikt over systemet oppbygning, beskrive de individuelle komponentene, og forklare hvordan de samhandler for å oppnå funksjonaliteten. Målet er å skape et solid fundament for videre læring og eksperimentering.
+O-Sim vil gi mulighet til å kontrollere fartøyet via autopilot, visualisere reisen på kart, og hente inn simulerte sensordata. De kommende seksjonene vil gi en oversikt over systemets oppbygning, beskrive de individuelle komponentene, og forklare hvordan de samhandler for å oppnå funksjonaliteten. Målet er å skape et solid fundament for videre læring og eksperimentering.
 
-## 2. Overordnet Arkitekturprinsipp: Mikrotjenester
+---
+
+## 2. Overordnet arkitekturprinsipp: Mikrotjenester
 
 O-Sim er bygget rundt prinsippene for en mikrotjenestearkitektur. Dette valget er fundamentalt for prosjektets design og reflekterer et viktig læringsmål: å forstå hvordan komplekse systemer kan brytes ned og organiseres i mindre, uavhengige og håndterbare enheter.
 
-### 2.1. Hva er Mikrotjenester?
+### 2.1 Hva er mikrotjenester?
 
-En mikrotjenestearkitektur er en tilnærming til programvareutvikling der en enkelt applikasjon er bygget som en samling av små, løst koblede og uavhengige distribuerbare tjenester. Hver tjeneste fokuserer på å løse et spesifikt problem eller utføre én bestemt funksjon. I motsetning til den tradisjonelle monolittiske applikasjonen, hvor all funkasjonalitet er pakket inn i en enkelt, stor og tett koblet kodebase.
+En mikrotjenestearkitektur er en tilnærming til programvareutvikling der en enkelt applikasjon er bygget som en samling av små, løst koblede og uavhengige distribuerbare tjenester. Hver tjeneste fokuserer på å løse et spesifikt problem eller utføre én bestemt funksjon.
 
-I en mikrotjenestearkitektur vil hver tjeneste:
+I motsetning til den tradisjonelle monolittiske applikasjonen, hvor all funksjonalitet er pakket inn i en enkelt, stor og tett koblet kodebase, vil hver mikrotjeneste:
 
-- Ha et spesifikt, veldefinitert ansvar: Den forkuserer på å gjøre én ting, og gjøre den bra. (Single responsibility prinsippet)
-- Kunne utvikles uavhengig: Ulike deler av systemet kan bearbeides uten direkte innvirkning på andre tjenester.
-- Kunne distribueres uavhengig: En endring i én tjeneste krever ikke at hele applikasjonen må bygges og distribueres på nytt.
-- Kommunisere via lette mekanismer: Ofte ved hjelp av veldefinerte API-er (som REST eller gRPC) eller asynkrone meldingskøer (NATS).
-- Potensielt bruke ulike teknologier: Selv om O-Sim hovedsakelig bruker .NET, åpner mikrotjenester for å velge det best egnede språket eller rammeverket for en spesifikk tjeneste i fremtidige utgivelser/utvidelser.
+- Ha et spesifikt, veldefinert ansvar
+- Kunne utvikles og distribueres uavhengig
+- Kommunisere via lette mekanismer (REST, gRPC, meldingskøer som NATS)
+- Potensielt bruke ulike teknologier
 
-### 2.2. Hvorfor Mikrotjenester for O-Sim?
+### 2.2 Hvorfor mikrotjenester for O-Sim?
 
-Valget av mikrotjenestearkitektur for O-Sim er drevet av flere faktorer, som fokuset på læring og avveing mot alternative arkitekturer som modulær monolitt.
+Valget av mikrotjenestearkitektur for O-Sim er drevet av:
 
-Mens en modulær monolitt (hvor koden er godt strukturert i separate moduler, men fortsatt kjører som én enkelt applikasjon) kunne vært et enklere utgangspunkt og et godt valg for et lite prosjekt, så falt valget på mikrotjenster av følgende grunner:
+- **Fokus på læring og utforsking**: Gir erfaring med inter-tjenestekommunikasjon, tjenestegrenser og uavhengig distribusjon.
+- **Klarere tjenestegrenser og kontrakter**: Fremtvinger disiplin rundt API-design og meldingsformater.
+- **Testbarhet**: Tjenester kan testes og kjøres isolert.
+- **Skalerbarhet og distribusjon**: Endringer i én tjeneste påvirker ikke andre.
 
-- Fokus på læring og utforsking: Hovedmålet med O-Sim er å få praktisk erfaring med å designe, utvikle og drifte et mikrotjenestesystem. Dette inkluderer å lære om inter-tjenestekommunikasjon, tjenestegrenser og uavhengig distribusjon, som er sentrale konsepter mikrotjenester utfordrer deg på. En modulær monolitt ville ikke gitt den samme dybden og innsikten på disse områdene.
+Selv om det introduserer mer kompleksitet i infrastruktur og drift, gir det viktige pedagogiske fordeler.
 
-- Klarere tjenestegrenser og kontrakter: Mikrotjenester tvinger frem en klar definisjon av API-er og meldingskontrakter mellom tjenester. I en monolitt kan det være lettere å "jukse" med direkte funksjonskall eller delte databaser, noe som kan føre til tette koblinger over tid. For O-Sim sikrer denne disiplinen at hver tjeneste er genuint uavhengig.
-
-- Enklere testbarhet for isolerte komponenter: Med mikrotjenester kan hver tjeneste kjøres og testes fullstendig isolert fra de andre. Dette er en stor fordel for en Test Driven Development (TDD)-tilnærming, da det minimerer behovet for komplekse oppsett for å teste enkelte funksjonsområder.
-
-- Uavhengig distribusjon og skalerbarhet: Selv om det ikke er et behov akkurat nå, gir mikrotjenester muligheten til uavhengig distribusjon av individuelle tjenester. Dette betyr at en endring i f.eks. AutopilotService ikke krever nedetid eller redeploy av SimulatorService. Det åpner også for selektiv skalering av tjenester som krever mer ressurser.
-
-Til tross for økt kompleksitet i infrastruktur og drift som mikrotjenestesystemer ofte medfører(kanskje spesielt for et soloprosjekt), veier de pedagogiske fordelene og den langvarige fleksibiliteten opp.
+---
 
 ## 3. Systemkomponenter
 
-O-Sim er en samling av løst koblede komponenter som sammen sørger for simulering- og kontrollfunksjonalitet. Arkitekturen bygger rundt en meldingsbuss som fasiliterer asynkron kommunikasjon mellom mikrotjenestene. Figuren nedenfor illustrerer systemets hovedkomponenter og deres innbyrdes relasjoner.
+O-Sim består av løst koblede komponenter som sammen gir simulerings- og kontrollfunksjonalitet. Arkitekturen bygger på en meldingsbuss for asynkron kommunikasjon mellom tjenester.
 
-![systemarkitektur bilde](Systemarkitektur_O-Sim.svg)
+![Systemarkitektur](Systemarkitektur_O-Sim.svg)
 
-De viktigste komponentene er:
+---
 
-### 3.1. NATS
+### 3.1 NATS
 
-- Rolle og formål: NATS fungerer som den sentrale, høyytelses meldingsmekleren for all intern kommunikasjon mellom O-Sims mikrotjenester. Den muliggjør et løst koblet system der tjenester kan publisere informasjon uten å vite hvem som lytter, og abonnere på informasjon uten å vite hvem som publiserer.
+**Rolle og formål:**
 
-- Valg av NATS (vs. Kafka): Valget av NATS fremfor andre meldingsmeklere som Kafka ble gjort med utgangspunkt i O-Sims primære formål som et læringsprosjekt, og behovet for enkelhet og sanntidskommunikasjon.
+- Sentral meldingsmekler
+- Løs kobling mellom tjenester
+- Asynkron kommunikasjon med publish/subscribe
 
-  - Enkelhet og lettvekt: NATS er betydelig enklere å sette opp, konfigurere og drifte sammenlignet med Kafka. Dette reduserer den infrastrukturelle kompleksiteten og lar fokuset ligge på applikasjonslogikken.
+**Valg av NATS fremfor Kafka:**
 
-  - Fokus på sanntid: NATS er optimalisert for lav latens og høy ytelse i "fire-and-forget" eller "request-reply" kommunikasjonsmønstre, hvor de nyeste dataene er viktigst og "at-most-once" levering er tilstrekkelig. Dette passer perfekt for en simulator som krever rask utveklsing av sensordata og kommandoer.
+- Lav kompleksitet
+- Sanntidsoptimalisering
+- Ressursvennlig
 
-  - Ressursvennlighet: Med lavere ressursbrukt (CPU, minne) er NATS et mer velegnet valg for å kjøre alle systemkomponenter lokalt i et Docker Compose-miljø.
+**Kommunikasjonsmønstre:**
 
-- Kommunikasjonsmønstre:
+- **Publish/Subscribe**: En-til-mange kommunikasjon
+- **Request/Reply**: For synkrone behov
 
-  - Publish/Subscribe: Hovedmønsteret. Tjenester publiserer meldinger til spesifikke emner (topics), og andre tjenester som er interessert, abonnnerer på disse emnene. Dette tillater en-til-mange-kommunikasjon (f.eks. SimulatorService publiserer fartøydata som flere tjenester abonnerer på).
+**Eksempler på emner:**
 
-  - Request/Reply: NATS støtter også et mønster for direkte forespørsel-svar, nyttig for mer synkron kommunikasjon der en tjeneste trenger et umiddelbart svar fra en annen (f.eks. for konfigurasjonsspørringer).
+- `sim.sensors.nav`
+- `sim.sensors.env`
+- `sim.commands.*`
+- `log.entries`
+- `alarm.triggers`
+- `env.commands.setmode`
 
-- Fordeler i O-Sim (generelt):
+**Kontrakter:**
 
-  - Løs kobling: Tjenestene er uavhengige av hverandre; de trenger bare å kjenne til NATS og meldingskontraktene. Dette øker robusthet og fleksibilitet.
+- Se `docs/api-contracts.md`
+- Implementert som DTO-er i `shared/O-Sim.Shared.Messages`
 
-  - Asynkron kommunikasjon: Forbedrer systemet responsivitet og ytelse, da tjenester ikke blokkerer hverandre mens de venter på svar.
+---
 
-  - Skalerbarhet: NATS er designet for å håndtere store volumer meldinger og kan enkelt skaleres for å møte fremtidige behov.
+### 3.2 API Gateway (Traefik)
 
-  - Enkelhet: Enkel å sette opp og bruke i et Docker-miljø, noe som er fordelaktig for et læringsprosjekt.
+**Rolle og formål:**
 
-- NATS emner (eksempler på nøkkelemner):
+- Felles inngangspunkt for eksterne klienter
+- Abstraherer mikrotjenester fra frontend
 
-  - sim.sensor.nav: Fartøyets navigasjonsdata (posisjon, fart, kurs). Publiseres av SimulatorService.
+**Hvorfor Traefik:**
 
-  - sim.sensors.env: Miljødata (vind, strøm). Publiseres av EnvironmentService.
+- Dynamisk tjenesteoppdagelse
+- Docker-integrasjon
+- Lettvekts og dashbord-støtte
 
-  - sim.commands.\*: Kommandoer til simulatoren eller autopiloten (f.eks. sim.commands.setcourse, sim.commands.rudder ). Publiseres av AutopilotService eller API Gateway.
+**Nøkkelroller i O-Sim:**
 
-  - log.entries: Generiske loggmeldinger fra alle tjenester. Publiseres av relevante tjenester.
+- HTTP/WS-routing
+- Lastbalansering
 
-  - alarm.triggers: Utløste alarmer. Publiseres av AlarmService.
+---
 
-  - env.commands.setmode: Kommando for å bytte miljømodus i EnvironmentService.
+### 3.3 Mikrotjenester
 
-- Detaljerte kontrakter: De eksakte JSON-strukturene for meldingene definieres i docs/api-contracts.md og implementeres som C# DTO-er i shared/Osim.Shared.Messages.
+Hver tjeneste har et tydelig ansvar og kommuniserer via NATS.
 
-### 3.2. API Gateway (Traefik)
+#### 3.3.1 SimulatorService
 
-- Rolle og formål: API Gateway fungerer som det enhetlige inngangspunktet for alle eksterne klienter som ønsker å interagere med O-Sim systemet. Hovedformålet med å innføre en API Gateway er å abstrahere og frikoble frontend-applikasjonene fra de underliggende mikrotjenestene. Dette muliggjør utvikling av flere forskjellige brukergrensesnigg (f.eks. både en desktop-applikasjon og en web-applikasjon) uten at de må kjenne til eller koble seg direkte til de individuelle mikrotjenestene. Ved å benytte Traefik som API Gateway oppnås dette sømløst i et Docker-miljø.
+**Ansvar:**
 
-- Valg av Traefik: Traefik ble valgt for O-Sim gunnet dets styrker innen dynamisk konfigurasjon og enkel integrasjon i Docker-miljøer:
+- Simulerer fartøyets bevegelse og dynamikk
 
-  - Dynamisk Tjenesteoppdagelse: Traefik kan automatisk oppdage nye tjenester og konfigurere rutene basert på Docker-labels. Dette eliminerer behovet for manuell rekonfigurasjon ved endringer i tjenestelandskapet.
+**Innkommende:**
 
-  - Enkelhet i Docker Compose: Konfigurasjon er intuitiv og defineres direkte i docker-compose.yml ved hjelp av enkle labels.
+- `sim.commands.*`
 
-  - Ressursvennlig: En lettvektsløsning med god ytelse, ideell for et lokalt utviklingsmiljø.
+**Utgående:**
 
-  - Innebygd Dashbord: Tilbyr sanntidsinnsikt i trafikkflyt og ruter, nyttig for feilsøking.
+- `sim.sensors.nav`
 
-- Nøkkelkonfigurasjon i O-Sim:
+**Nøkkelfunksjoner:**
 
-  - Ruteføring (Routing): Videresender innkommende HTTP-forespørsler og WebSocket-tilkoblinger fra Frontend GUI til de korresponderende interne mikrotjenestene.
+- Modellering av posisjon, kurs, fart osv.
+- Reaksjon på kommandoer
 
-  - Lastbalansering: Kan fordelere trafikk mellom flere instanser av en mikrotjeneste, om nødvendig.
+#### 3.3.2 EnvironmentService
 
-## 3.3. Mikrotjenestene
+**Ansvar:**
 
-O-Sim består av flere dedikerte mikrotjenester, hver med et klart definert ansvar og som kommuniserer asynkront via NATS. Alle mikrotjenestene er utviklet i C# (.NET 9) og kjøres som separate Docker-containere.
+- Simulerer vind, strøm og bølger
 
-### 3.3.1. SimulatorService
+**Innkommende:**
 
-- Ansvar: Fungerer som kjernen i simulatoren ved å modellere fartøyets dynamikk (posisjon, fart, kurs, heading, etc.). Den simulerer hvordan fartøyet beveger seg og reagerer på ytre krefter og kommandoer.
+- `env.commands.setmode`
 
-- Innkommende kommunikasjon (via NATS):
+**Utgående:**
 
-  - Abbonerer på sim.commands.\* (f.eks. sim.commands.rudder, sim.commands.thrust) for å motta kontrollsignaler fra AutopilotService eller manuelle kommandoer via API Gateway.
+- `sim.sensors.env`
 
-- Utgående kommunikasjon (via NATS):
+**Nøkkelfunksjoner:**
 
-  - Publiserer kontinuerlig fartøyets aktuelle navigasjonsdata til sim.sensors.nav. Disse dataene er avgjørende for AutopilotService, LoggerService og Frontend GUI.
+- Generering av miljødata
+- Støtte for flere simuleringsmoduser
 
-- Nøkkelfunksjonalitet:
+**Fremtidig utvidelse:**
 
-  - Matematisk modellering av fartøyets bevegelse.
+- Siktforhold, dybde, eksterne API-er
 
-  - Håndtering av treghet, friksjon og andre fysiske aspekter.
+#### 3.3.3 AutopilotService
 
-  - Behandling av innkommende kommandoer.
+**Ansvar:**
 
-  - Generering av simulerte navigasjonsdata (posisjon, hastighet, kurs).
+- Regulerer kurs og fart basert på settpunkter og sensordata
 
-### 3.3.2. EnvironmentService
+**Innkommende:**
 
-- Ansvar: Genererer og publiserer simulerte miljødata som påvirker fartøyet, primært vind, strøm og bølger. Denne tjenesten fungerer som erstatning for virkelige miljøsensorer i et kontrollert simuleringsmiljø.
+- `sim.sensors.nav`
+- `sim.sensors.env`
+- `sim.commands.setcourse`
+- `sim.commands.setspeed`
 
-- Innkommende kommunikasjon (via NATS):
+**Utgående:**
 
-  - Abbonerer på env.commands.setmode for å dynamisk bytte mellom ulike simuleringsmoduser (f.eks. "rolige forhold", "vindfull dag", "full storm", "store bølger").
+- `sim.commands.rudder`
+- `sim.commands.thrust`
 
-- Utgående kommunikasjon (via NATS):
+**Nøkkelfunksjoner:**
 
-  - Publiserer kontinuerlig miljødata til sim.sensors.env.
+- PID-kontroll
+- Kurs- og fartsregulering
 
-- Nøkkelfunksjonalitet:
+#### 3.3.4 AlarmService
 
-  - Generering av simulert vindhastighet og vindretning.
+**Ansvar:**
 
-  - Generering av simulert strømhastighet og strømretning.
+- Detekterer og publiserer alarmer basert på innkommende data
 
-  - Generering av simulerte bølgeparametre (f.eks. bølgehøyde, -retning, og -periode).
+**Innkommende:**
 
-  - Administrering av forskjellige simuleringsmoduser for miljøet.
+- `sim.sensors.nav`
+- `sim.sensors.env`
+- `log.entries`
 
-- Utvidelsespotensial: I fremtidige utvidelser kan denne tjenesten få flere miljøfaktorer som har betydning for fartøysdynamikken og simuleringen:
+**Utgående:**
 
-  - Vanndybde og sjøbunn: Implementering av grunnvannseffekter som påvirker manøvrering og motstand i grunt farvann.
+- `alarm.triggers`
 
-  - Siktforhold: Simulering av tåke, regn og/eller nattforhold som påvirker visuell navigasjon.
+**Nøkkelfunksjoner:**
 
-  - Eksterne data: Mulighet for å hente inn sanntidsdata fra eksterne APIer (f.eks. for vær og strøm) som et alternativ til full simulering.
+- Regeldrevet overvåking
+- Alarmgenerering
 
-### 3.3.3. AutopilotService
+#### 3.3.5 LoggerService
 
-- Ansvar: Implementerer kontrollalgoritmer for å autonomt styre fartøyets kurs og/eller fart basert på settpunkter og innhentede sensordata. Den fungerer som "hjernen" som tar beslutninger for fartøyet.
+**Ansvar:**
 
-- Innkommende kommunikasjon (via NATS):
+- Sentral lagring av alle relevante meldinger
 
-  - Abonerer på sim.sensors.nav (fra SimulatorService) for å få fartøyets aktuelle posisjon, kurs og fart.
+**Innkommende:**
 
-  - Abonnerer på sim.sensors.env (fra EnvironmentService) for å ta hensyn til ytre påvirkninger.
+- Abonnerer bredt (alle relevante emner)
 
-  - Mottar settpunkter for ønsket kurs/fart via sim.commands.setcourse, sim.commands.setspeed (publisert av API Gateway ved brukerinteraksjon).
+**Utgående:**
 
-- Utgående kommunikasjon (via NATS):
+- Persistens til CSV eller database
 
-  - Publiserer kontrollkommandoer (f.eks. rorutslag, thrust) til sim.commands.rudder, sim.commands.thrust som SimulatorService da reagerer på.
+**Nøkkelfunksjoner:**
 
-- Nøkkelfunksjonalitet:
+- Mottak og lagring av meldinger
+- (Fremtidig) avspilling og analyse
 
-  - Implementering av PID-kontroller (eller lignende) for kursholding og fartsholding.
-
-  - Behandling av avvik mellom ønsket og faktisk tilstand.
-
-  - Generering av aktuator-kommandoer for simulator.
-
-### 3.3.4. AlarmService
-
-- Ansvar: Overvåker ulike datastrømmer i systemet for å detektere og varsle om uregelmessigheter, avvik eller kritiske hendelser.
-
-- Innkommende kommunikasjon (via NATS)
-
-  - Abonnerer på relevante emner som sim.sensors.nav, sim.sensors.env, log.entries, eller andre spesifikke data som krever overvåking for å identifisere avvik (f.eks. fartøy utenfor definert område, overskridelse av grenseverdier for fart/kurs).
-
-- Utgående kommunikasjon (via NATS):
-
-  - Publiserer alarmer og varsler til alarm.triggers for logging og presentasjon i Frontend GUI.
-
-- Nøkkelfunksjonalitet:
-
-  - Definering av regler for hva som utgjør en alarm.
-
-  - Kontinuerlig analyse av innkommende data mot disse reglene.
-
-  - Generering av alarmmeldinger med status og detaljer.
-
-### 3.3.5. LoggerService
-
-- Ansvar: Er systemet sentrale punkt for datapersistens. Den lagrer alle relevante simuleringsdata, kommandoer og hendelser for senere analyse, avspilling eller feilsøking.
-
-- Innkommende kommunikasjon (via NATS)
-
-  - Abonnerer på et bredt spekter av NATS-emner, inkludert, men ikke begrenset til, sim.sensors.nav, sim.sensors.env, sim.commands.\*, alarm.triggers, og log.entries. Målet er å fange opp all systemaktivitet.
-
-- Utgående kommunikasjon:
-
-  - Persisterer data til et valgt lagringdsmedium (f.eks. CSV-filer for enkelhet, eller en relasjonsdatabase som SQLite/PostgreSQL for mer strukturert lagring).
-
-- Nøkkelfunksjonalitet:
-
-  - Motta og deserialisere NATS-meldinger.
-
-  - Strukturert lagring av data.
-
-  - (Fremtidig): Funksjonalitet for å hente ut historisk data for visualisering eller analyse.
+---
 
 ### 3.4 Frontend GUI
 
-- Rolle og formål: Frontend GUI representerer brukergrensesnittene for O-Sim-systemet. Hovedrollen er å gi brukere et interaktivt verktøy for å kontrollere fartøyet, visualisere simuleringsdata (som fartøyets posisjon og miljøforhold), og motta alarmer og statusmeldinger.
+**Rolle:**
 
-- Implementasjon: Initialt vil en WPF-basert desktop-applikasjon bli utviklet for å utnytte .NET-økosystemet og gi en rik brukeropplevelse. Som et fremtidig steg er det planlagt å utvikle et webapp-basert dashbord med Next.js for å gi plattformuavhengig tilgang.
+- Brukergrensesnitt for kontroll og visualisering
 
-- Kommunikasjon: All kommunikasjon mellom backend-tjenestene skjer via API Gateway (Traefik). Dette sikrer en abstrahert og frikoblet interaksjon, og lar frontend-applikasjonene konsumere REST-endepunkter for kommandoer og WebSocket-strømmer for sanntidsdata, uten direkte kjennskap til de individuelle mikrotjenestene.
+**Implementasjon:**
 
-- Nøkkelfunksjonalitet:
+- WPF først, deretter Next.js
 
-  - Presentasjon av sanntids navigasjonsdata (posisjon, fart, kurs).
+**Kommunikasjon:**
 
-  - Visualisering av fartøyets bevegelse og miljødata på kart.
+- Via API Gateway (REST + WebSocket)
 
-  - Input for manuelle kommandoer og settpunkter til autopiloten.
+**Funksjoner:**
 
-  - Visning av alarmer og loggmeldinger.
+- Visning av sanntidsdata
+- Kartvisning
+- Input for kurs/fart
+- Alarmvisning
+
+---
 
 ## 4. Tverrgående aspekter
 
-### 4.1. Teknologi stack
+### 4.1 Teknologistack
 
-O-Sim er primært bygget på følgende teknologier:
+- **Backend**: C# (.NET 9)
+- **Frontend**: WPF (desktop), Next.js (web)
+- **Kommunikasjon**: NATS
+- **Gateway**: Traefik
+- **Containere**: Docker Compose
 
-- Backend tjenester: C# (.NET 9). Valget av .NET 9 gir tilgang til de nyeste ytelsesforbedringene og utviklerverktøyene fra Microsoft, og sikrer en moderne og robust backend.
+### 4.2 Kommunikasjonskontrakter
 
-- Frontend applikasjoner:
+- Definert i `docs/api-contracts.md`
+- Implementert som DTO-er i `O-Sim.Shared.Messages`
+- Type-sikkerhet og enkel serialisering
 
-  - Desktop GUI: WPF (Windows Presentation Foundation) med C#. Gir mulighet for en rik og responsiv desktop-opplevelse.
+### 4.3 Konfigurasjonshåndtering
 
-  - Web Dashboard: Next.js med TypeScript. Tilbyr ett moderne, skalérbart og plattformuavhengig webgrensesnitt.
+- **Miljøvariabler**: For runtime-konfigurasjon
+- **appsettings.json**: For stabile innstillinger
 
-- Kommunikasjon: NATS for intern, asynkron meldingsbasert kommunikasjon.
+### 4.4 Observabilitet
 
-- API Gateway: Traefik for ekstern HTTP/WebSocket-kommunikasjon og dynamisk ruteføring i Docker-miljøet.
+- **Logging**: Standard .NET-logging → `log.entries`
+- **Health checks**: HTTP-endepunkt (`/health`) for hver tjeneste
+- **Bruk i Traefik/Docker Compose**: Overvåk og restart ved behov
 
-- Containerisering og orkestrering: Docker Compose for å definere og kjøre systemets ulike tjenester i isolerte containere lokalt.
-
-### 4.2. Kommunikasjonskontrakter
-
-For å sikre sømløs og robust kommunikasjon mellom de løst koblede mikrotjenestene, defineres strenge meldingskontrakter.
-
-- Formål: Disse kontraktene standardiserer formatet og innholdet i meldingene som utveksles over NATS. Dette sikrer at tjenester kan forstå hverandres data uten å ha dyp kjennskap til den interne implementasjonen.
-
-- Definisjon: De eksakte JSON-strukturene for alle viktige meldinger vil bli detaljert beskrevet i docs/api-contracts.md.
-
-- Implementasjon: I C# implementeres disse kontraktene som Data Transfer Objects (DTOs) i det delte prosjektet shared/OSim.Shared.Messages, noe som sikrer type-sikkerhet og forenkler serialisering/deserialisering.
-
-### 4.3. Konfigurasjonshåndtering
-
-Hver mikrotjeneste vil benytte en kombinasjon av følgende metoder for konfigurasjon:
-
-- Miljøvariabler: Primær metode for å injisere konfigurasjon som er spesifikk for kjøremiljøet (f.eks. NATS-tilkoblingsstrenger). Dette forenkler distribusjon med Docker Compose.
-
-- appsettings.json: Standard .NET-konfigurasjonsfil for applikasjonsspesifikke innstillinger som ikke endres mellom miljøer, eller som kan overstyres av miljøvariabler.
-
-### 4.4 Observabilitet (logging og health checks)
-
-Et mikrotjenestesystem krever gode verktøy for observabilitet for å forstå systemet oppførsel, feilsøke problemer og overvåke ytelse.
-
-- Sentralisert logging: Alle mikrotjenestene vil bruke et standard .NET logging-rammeverk (Microsoft.Extensions.Logging) for å generere loggmeldinger. Disse loggene vil deretter publiseres til NATS (til emnet log.entries) og abonneres på av LoggerService for sentralisert persistens og analyse. Dette muliggjør en samlet oversikt over systemets aktivitet.
-
-- Health checks: Hver mikrotjeneste vil eksponere et enkelt HTTP-endepunkt (f.eks /health) som indikerer tjenestens operative status. Dette er avgjørende for Docker Compose og Traefik for å kunne overvåke tjenestenes helse, og eventuelt starte dem på nytt om de blir unresponsive.
+---
