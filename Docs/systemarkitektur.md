@@ -17,7 +17,7 @@ O-Sim vil gi mulighet til å kontrollere fartøyet via autopilot, visualisere re
 
 O-Sim er bygget rundt prinsippene for en mikrotjenestearkitektur. Dette valget er fundamentalt for prosjektets design og reflekterer et viktig læringsmål: å forstå hvordan komplekse systemer kan brytes ned og organiseres i mindre, uavhengige og håndterbare enheter.
 
-### 2.1 Hva er Mikrotjenester?
+### 2.1. Hva er Mikrotjenester?
 
 En mikrotjenestearkitektur er en tilnærming til programvareutvikling der en enkelt applikasjon er bygget som en samling av små, løst koblede og uavhengige distribuerbare tjenester. Hver tjeneste fokuserer på å løse et spesifikt problem eller utføre én bestemt funksjon. I motsetning til den tradisjonelle monolittiske applikasjonen, hvor all funkasjonalitet er pakket inn i en enkelt, stor og tett koblet kodebase.
 
@@ -29,7 +29,7 @@ I en mikrotjenestearkitektur vil hver tjeneste:
 - Kommunisere via lette mekanismer: Ofte ved hjelp av veldefinerte API-er (som REST eller gRPC) eller asynkrone meldingskøer (NATS).
 - Potensielt bruke ulike teknologier: Selv om O-Sim hovedsakelig bruker .NET, åpner mikrotjenester for å velge det best egnede språket eller rammeverket for en spesifikk tjeneste i fremtidige utgivelser/utvidelser.
 
-### 2.2 Hvorfor Mikrotjenester for O-Sim?
+### 2.2. Hvorfor Mikrotjenester for O-Sim?
 
 Valget av mikrotjenestearkitektur for O-Sim er drevet av flere faktorer, som fokuset på læring og avveing mot alternative arkitekturer som modulær monolitt.
 
@@ -53,7 +53,7 @@ O-Sim er en samling av løst koblede komponenter som sammen sørger for simuleri
 
 De viktigste komponentene er:
 
-### 3.1 NATS
+### 3.1. NATS
 
 - Rolle og formål: NATS fungerer som den sentrale, høyytelses meldingsmekleren for all intern kommunikasjon mellom O-Sims mikrotjenester. Den muliggjør et løst koblet system der tjenester kan publisere informasjon uten å vite hvem som lytter, og abonnere på informasjon uten å vite hvem som publiserer.
 
@@ -96,3 +96,79 @@ De viktigste komponentene er:
   - env.commands.setmode: Kommando for å bytte miljømodus i EnvironmentService.
 
 - Detaljerte kontrakter: De eksakte JSON-strukturene for meldingene definieres i docs/api-contracts.md og implementeres som C# DTO-er i shared/Osim.Shared.Messages.
+
+### 3.2. API Gateway (Traefik)
+
+- Rolle og formål: API Gateway fungerer som det enhetlige inngangspunktet for alle eksterne klienter som ønsker å interagere med O-Sim systemet. Hovedformålet med å innføre en API Gateway er å abstrahere og frikoble frontend-applikasjonene fra de underliggende mikrotjenestene. Dette muliggjør utvikling av flere forskjellige brukergrensesnigg (f.eks. både en desktop-applikasjon og en web-applikasjon) uten at de må kjenne til eller koble seg direkte til de individuelle mikrotjenestene. Ved å benytte Traefik som API Gateway oppnås dette sømløst i et Docker-miljø.
+
+- Valg av Traefik: Traefik ble valgt for O-Sim gunnet dets styrker innen dynamisk konfigurasjon og enkel integrasjon i Docker-miljøer:
+
+  - Dynamisk Tjenesteoppdagelse: Traefik kan automatisk oppdage nye tjenester og konfigurere rutene basert på Docker-labels. Dette eliminerer behovet for manuell rekonfigurasjon ved endringer i tjenestelandskapet.
+
+  - Enkelhet i Docker Compose: Konfigurasjon er intuitiv og defineres direkte i docker-compose.yml ved hjelp av enkle labels.
+
+  - Ressursvennlig: En lettvektsløsning med god ytelse, ideell for et lokalt utviklingsmiljø.
+
+  - Innebygd Dashbord: Tilbyr sanntidsinnsikt i trafikkflyt og ruter, nyttig for feilsøking.
+
+- Nøkkelkonfigurasjon i O-Sim:
+
+  - Ruteføring (Routing): Videresender innkommende HTTP-forespørsler og WebSocket-tilkoblinger fra Frontend GUI til de korresponderende interne mikrotjenestene.
+
+  - Lastbalansering: Kan fordelere trafikk mellom flere instanser av en mikrotjeneste, om nødvendig.
+
+## 3.3.
+
+O-Sim består av flere dedikerte mikrotjenester, hver med et klart definert ansvar og som kommuniserer asynkront via NATS. Alle mikrotjenestene er utviklet i C# (.NET 9) og kjøres som separate Docker-containere.
+
+### 3.3.1. SimulatorService
+
+- Ansvar: Fungerer som kjernen i simulatoren ved å modellere fartøyets dynamikk (posisjon, fart, kurs, heading, etc.). Den simulerer hvordan fartøyet beveger seg og reagerer på ytre krefter og kommandoer.
+
+- Innkommende kommunikasjon (via NATS):
+
+  - Abbonerer på sim.commands.\* (f.eks. sim.commands.rudder, sim.commands.thrust) for å motta kontrollsignaler fra AutopilotService eller manuelle kommandoer via API Gateway.
+
+- Utgående kommunikasjon (via NATS):
+
+  - Publiserer kontinuerlig fartøyets aktuelle navigasjonsdata til sim.sensors.nav. Disse dataene er avgjørende for AutopilotService, LoggerService og Frontend GUI.
+
+- Nøkkelfunksjonalitet:
+
+  - Matematisk modellering av fartøyets bevegelse.
+
+  - Håndtering av treghet, friksjon og andre fysiske aspekter.
+
+  - Behandling av innkommende kommandoer.
+
+  - Generering av simulerte navigasjonsdata (posisjon, hastighet, kurs).
+
+### 3.3.2. EnvironmentService
+
+- Ansvar: Genererer og publiserer simulerte miljødata som påvirker fartøyet, primært vind, strøm og bølger. Denne tjenesten fungerer som erstatning for virkelige miljøsensorer i et kontrollert simuleringsmiljø.
+
+- Innkommende kommunikasjon (via NATS):
+
+  - Abbonerer på env.commands.setmode for å dynamisk bytte mellom ulike simuleringsmoduser (f.eks. "rolige forhold", "vindfull dag", "full storm", "store bølger").
+
+- Utgående kommunikasjon (via NATS):
+
+  - Publiserer kontinuerlig miljødata til sim.sensors.env.
+
+- Nøkkelfunksjonalitet:
+
+  - Generering av simulert vindhastighet og vindretning.
+
+  - Generering av simulert strømhastighet og strømretning.
+
+  - Generering av simulerte bølgeparametre (f.eks. bølgehøyde, -retning, og -periode).
+
+  - Administrering av forskjellige simuleringsmoduser for miljøet.
+
+- Utvidelsespotensial: I fremtidige utvidelser kan denne tjenesten få flere miljøfaktorer som har betydning for fartøysdynamikken og simuleringen:
+
+  - Vanndybde og sjøbunn: Implementering av grunnvannseffekter som påvirker manøvrering og motstand i grunt farvann.
+
+  - Siktforhold: Simulering av tåke, regn og/eller nattforhold som påvirker visuell navigasjon.
+
+  - Eksterne data: Mulighet for å hente inn sanntidsdata fra eksterne APIer (f.eks. for vær og strøm) som et alternativ til full simulering.
