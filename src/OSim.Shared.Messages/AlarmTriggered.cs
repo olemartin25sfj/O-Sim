@@ -1,3 +1,5 @@
+using System;
+
 namespace OSim.Shared.Messages;
 
 public class AlarmTriggered
