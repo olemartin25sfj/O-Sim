@@ -16,6 +16,8 @@ public class Worker : BackgroundService
     {
         _logger = logger;
         _simulator = new SimulatorEngine();
+        _simulator.SetWind(270, 2); // Vind fra vest, 2 knop
+        _simulator.SetCurrent(90, 1); // Strøm fra øst, 1 knop
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

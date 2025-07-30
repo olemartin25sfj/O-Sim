@@ -253,7 +253,7 @@ Hver tjeneste har et tydelig ansvar og kommuniserer via NATS.
 ### 4.2 Kommunikasjonskontrakter
 
 - Definert i `docs/api-contracts.md`
-- Implementert som DTO-er i `O-Sim.Shared.Messages`
+- Implementert som DTO-er i `OSim.Shared.Messages`
 - Type-sikkerhet og enkel serialisering
 
 ### 4.3 Konfigurasjonshåndtering
