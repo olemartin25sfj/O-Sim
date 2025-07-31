@@ -15,9 +15,9 @@ namespace SimulatorService.Services
         private double _desiredSpeed = 0.0;
 
         // Miljødata
-        private double _windSpeed = 0.0;      // knop
-        private double _windDirection = 0.0;  // grader
-        private double _currentSpeed = 0.0;   // knop
+        private double _windSpeed = 0.0;        // knop
+        private double _windDirection = 0.0;    // grader
+        private double _currentSpeed = 0.0;     // knop
         private double _currentDirection = 0.0; // grader
 
         // Konstanter
@@ -54,10 +54,13 @@ namespace SimulatorService.Services
             double seconds = deltaTime.TotalSeconds;
 
             // 1. Heading – dynamisk sving basert på hastighet
-            double headingDelta = NormalizeAngle(_desiredHeading - _heading);
+            double headingError = NormalizeAngle(_desiredHeading - _heading);
+            if (headingError > 180.0) headingError -= 360.0;
+
             double effectiveTurnRate = BaseTurnRate + (_speed * TurnRatePerKnot);
-            double maxTurn = effectiveTurnRate * seconds;
-            double headingChange = Math.Clamp(headingDelta, -maxTurn, maxTurn);
+            double maxHeadingChange = effectiveTurnRate * seconds;
+            double headingChange = Math.Clamp(headingError, -maxHeadingChange, maxHeadingChange);
+
             _heading = NormalizeAngle(_heading + headingChange);
 
             // 2. Fart – akselerasjon mot ønsket fart
@@ -66,7 +69,7 @@ namespace SimulatorService.Services
             _speed += speedChange;
 
             // 3. Bevegelse – kombiner egne krefter + vind + strøm
-            double distanceShip = _speed * (seconds / 3600.0);
+            double distanceShip = _speed * (seconds / 3600.0);     // knop -> nm
             double distanceWind = _windSpeed * (seconds / 3600.0);
             double distanceCurrent = _currentSpeed * (seconds / 3600.0);
 
@@ -82,8 +85,8 @@ namespace SimulatorService.Services
             dx += distanceCurrent * Math.Cos(DegToRad(_currentDirection));
             dy += distanceCurrent * Math.Sin(DegToRad(_currentDirection));
 
-            _latitude += dy / 60.0;
-            _longitude += dx / 60.0;
+            _latitude += dy / 60.0;    // konverter nm til grader (nord/sør)
+            _longitude += dx / 60.0;   // konverter nm til grader (øst/vest)
         }
 
         private static double DegToRad(double deg) => deg * Math.PI / 180.0;
@@ -91,8 +94,7 @@ namespace SimulatorService.Services
         private static double NormalizeAngle(double angle)
         {
             angle %= 360.0;
-            if (angle < 0) angle += 360;
-            return angle;
+            return angle < 0 ? angle + 360.0 : angle;
         }
     }
 }
