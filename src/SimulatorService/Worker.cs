@@ -4,43 +4,38 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using SimulatorService;
+using SimulatorService.Services;
 namespace SimulatorService;
 
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    private readonly SimulatorEngine _simulator;
+    private readonly SimulatorEngine _engine;
+    private readonly TimeSpan _tickInterval = TimeSpan.FromSeconds(1);
 
     public Worker(ILogger<Worker> logger)
     {
         _logger = logger;
-        _simulator = new SimulatorEngine();
-        _simulator.SetWind(270, 2); // Vind fra vest, 2 knop
-        _simulator.SetCurrent(90, 1); // Strøm fra øst, 1 knop
+        _engine = new SimulatorEngine();
+
+        // Startverdi for testformål
+        _engine.SetDesiredHeading(45.0);
+        _engine.SetDesiredSpeed(10.0);
+        _engine.SetEnvironment(windSpeed: 2.0, windDirection: 180.0, currentSpeed: 1.0, currentDirection: 90.0);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-
     {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var lastUpdate = sw.Elapsed;
-
         while (!stoppingToken.IsCancellationRequested)
         {
-            var now = sw.Elapsed;
-            var delta = now - lastUpdate;
-            lastUpdate = now;
+            _engine.Update(_tickInterval);
 
-            _simulator.Update(delta);
+            _logger.LogInformation("Time: {time}", DateTimeOffset.Now);
+            _logger.LogInformation("Posisjon: {lat:F4}, {lon:F4}", _engine.Latitude, _engine.Longitude);
+            _logger.LogInformation("Heading: {heading:F1}°  Fart: {speed:F1} knop", _engine.Heading, _engine.Speed);
+            _logger.LogInformation("---------------------------------------------------");
 
-            var state = _simulator.GetCurrentState();
-            _logger.LogInformation("Lat: {Lat:F6}, Lon: {Lon:F6}, Head: {Head:F1}, Speed: {Speed:F1}",
-            state.Latitude, state.Longitude, state.Heading, state.Speed);
-
-            await Task.Delay(100, stoppingToken);
+            await Task.Delay(_tickInterval, stoppingToken);
         }
     }
 }
