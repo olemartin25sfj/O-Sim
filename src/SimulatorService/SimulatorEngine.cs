@@ -1,80 +1,98 @@
 using System;
-using System.ComponentModel.DataAnnotations;
-using OSim.Shared.Messages;
 
-namespace SimulatorService
+namespace SimulatorService.Services
 {
     public class SimulatorEngine
     {
-        private double _latitude = 59.0;
-        private double _longitude = 10.0;
-        private double _heading = 0.0; // grader
-        private double _speed = 10.0; // knop
+        // Interne tilstandsfelt
+        private double _latitude = 59.4;
+        private double _longitude = 10.5;
+        private double _heading = 90.0; // grader (øst)
+        private double _speed = 0.0;    // knop
 
-        // Miljøpåvirkning
+        // Settpunkt
+        private double _desiredHeading = 90.0;
+        private double _desiredSpeed = 0.0;
 
-        private double _windDirection; // grader
-        private double _windSpeed; // knop
-        private double _currentDirection; // strøm
-        private double _currentSpeed; // knop
+        // Miljødata
+        private double _windSpeed = 0.0;      // knop
+        private double _windDirection = 0.0;  // grader
+        private double _currentSpeed = 0.0;   // knop
+        private double _currentDirection = 0.0; // grader
 
-        public void SetHeading(double heading) => _heading = heading;
-        public void SetSpeed(double speed) => _speed = speed;
+        // Konstanter
+        private const double BaseTurnRate = 1.0;        // grader per sekund
+        private const double TurnRatePerKnot = 0.5;     // ekstra grader/s per knop
+        private const double Acceleration = 1.0;        // knop per sekund
 
-        public void SetWind(double directionDeg, double SpeedKnots)
+        // Eksternt tilgjengelig tilstand (for evt. UI/logging)
+        public double Latitude => _latitude;
+        public double Longitude => _longitude;
+        public double Heading => _heading;
+        public double Speed => _speed;
+
+        public void SetDesiredHeading(double heading)
         {
-            _windDirection = directionDeg;
-            _windSpeed = SpeedKnots;
+            _desiredHeading = NormalizeAngle(heading);
         }
 
-
-        public void SetCurrent(double directionDeg, double SpeedKnots)
+        public void SetDesiredSpeed(double speed)
         {
-            _currentDirection = directionDeg;
-            _currentSpeed = SpeedKnots;
+            _desiredSpeed = Math.Max(0.0, speed); // kan ikke gå bakover
+        }
+
+        public void SetEnvironment(double windSpeed, double windDirection, double currentSpeed, double currentDirection)
+        {
+            _windSpeed = windSpeed;
+            _windDirection = NormalizeAngle(windDirection);
+            _currentSpeed = currentSpeed;
+            _currentDirection = NormalizeAngle(currentDirection);
         }
 
         public void Update(TimeSpan deltaTime)
         {
             double seconds = deltaTime.TotalSeconds;
+
+            // 1. Heading – dynamisk sving basert på hastighet
+            double headingDelta = NormalizeAngle(_desiredHeading - _heading);
+            double effectiveTurnRate = BaseTurnRate + (_speed * TurnRatePerKnot);
+            double maxTurn = effectiveTurnRate * seconds;
+            double headingChange = Math.Clamp(headingDelta, -maxTurn, maxTurn);
+            _heading = NormalizeAngle(_heading + headingChange);
+
+            // 2. Fart – akselerasjon mot ønsket fart
+            double speedDelta = _desiredSpeed - _speed;
+            double speedChange = Math.Clamp(speedDelta, -Acceleration * seconds, Acceleration * seconds);
+            _speed += speedChange;
+
+            // 3. Bevegelse – kombiner egne krefter + vind + strøm
             double distanceShip = _speed * (seconds / 3600.0);
             double distanceWind = _windSpeed * (seconds / 3600.0);
             double distanceCurrent = _currentSpeed * (seconds / 3600.0);
 
-            // Totale bevegelser i X/Y-retning i grader
-
             double dx = 0.0;
             double dy = 0.0;
 
-            // Fartøyets bevegelse
             dx += distanceShip * Math.Cos(DegToRad(_heading));
             dy += distanceShip * Math.Sin(DegToRad(_heading));
 
-            // Vinddrift
             dx += distanceWind * Math.Cos(DegToRad(_windDirection));
             dy += distanceWind * Math.Sin(DegToRad(_windDirection));
 
-            // Strømdrift
             dx += distanceCurrent * Math.Cos(DegToRad(_currentDirection));
             dy += distanceCurrent * Math.Sin(DegToRad(_currentDirection));
 
-            // Endre posisjon (1° = ca 60 nm)
             _latitude += dy / 60.0;
             _longitude += dx / 60.0;
         }
 
-        public VesselState GetCurrentState()
-        {
-            return new VesselState
-            {
-                Timestamp = DateTime.UtcNow,
-                Latitude = _latitude,
-                Longitude = _longitude,
-                Heading = _heading,
-                Speed = _speed,
-            };
-        }
-
         private static double DegToRad(double deg) => deg * Math.PI / 180.0;
+
+        private static double NormalizeAngle(double angle)
+        {
+            angle %= 360.0;
+            if (angle < 0) angle += 360;
+            return angle;
+        }
     }
 }
