@@ -1,6 +1,6 @@
 using System;
 
-namespace SimulatorService.Services
+namespace SimulatorService
 {
     public class SimulatorEngine
     {
