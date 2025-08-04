@@ -1,8 +1,11 @@
 using System;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NATS.Client;
+using OSim.Shared.Messages;
 using SimulatorService;
 
 namespace SimulatorService
@@ -36,6 +39,33 @@ namespace SimulatorService
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            // Sett opp NATS-tilkobling og abonnement
+            var opts = ConnectionFactory.GetDefaultOptions();
+            opts.Url = "nats://localhost:4222";
+            using var natsConnection = new ConnectionFactory().CreateConnection(opts);
+            var envSubscription = natsConnection.SubscribeAsync("sim.sensors.env", (sender, args) =>
+            {
+                try
+                {
+                    var json = System.Text.Encoding.UTF8.GetString(args.Message.Data);
+                    var env = JsonSerializer.Deserialize<EnvironmentData>(json);
+                    if (env != null)
+                    {
+                        _engine.SetEnvironment(
+                            windSpeed: env.WindSpeedKnots,
+                            windDirection: env.WindDirection,
+                            currentSpeed: env.CurrentSpeed,
+                            currentDirection: env.CurrentDirection
+                        );
+                        _logger.LogInformation($"Mottok miljødata: {json}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Feil ved behandling av miljødata: {ex.Message}");
+                }
+            });
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 _autopilot.Update();
