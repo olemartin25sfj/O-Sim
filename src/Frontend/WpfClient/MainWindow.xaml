@@ -1,0 +1,23 @@
+﻿<Window x:Class="WpfClient.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="O-Sim Visualisering"
+        Height="300"
+        Width="400">
+    <StackPanel Margin="20">
+        <TextBlock Text="Fartøydata"
+                FontWeight="Bold"
+                FontSize="16"/>
+        <TextBlock x:Name="PosisjonText"
+                Text="Posisjon: "
+                Margin="0,10,0,0"/>
+        <TextBlock x:Name="FartText"
+                Text="Fart: "/>
+        <TextBlock x:Name="KursText"
+                Text="Kurs: "/>
+        <TextBlock x:Name="VindText"
+                Text="Vind: "/>
+        <TextBlock x:Name="StrømText"
+                Text="Strøm: "/>
+    </StackPanel>
+</Window>

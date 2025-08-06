@@ -1,6 +1,69 @@
 # docker-compose.yml
 
 services:
+  simulatorservice:
+    build:
+      context: ./src
+      dockerfile: SimulatorService/Dockerfile
+    depends_on:
+      - nats
+
+  environmentservice:
+    build:
+      context: ./src
+      dockerfile: EnvironmentService/Dockerfile
+    depends_on:
+      - nats
+
+  loggerservice:
+    build:
+      context: ./src
+      dockerfile: LoggerService/Dockerfile
+    depends_on:
+      - nats
+
+  autopilotservice:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.autopilot.rule=PathPrefix(`/api/autopilot`)"
+      - "traefik.http.services.autopilot.loadbalancer.server.port=80"
+    build:
+      context: ./src
+      dockerfile: AutopilotService/Dockerfile
+    depends_on:
+      - nats
+
+  gatewayproxy:
+    build:
+      context: ./src
+      dockerfile: GatewayProxyService/Dockerfile
+    depends_on:
+      - nats
+    ports:
+      - "5000:5000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gatewayproxy.rule=PathPrefix(`/ws`)"
+      - "traefik.http.services.gatewayproxy.loadbalancer.server.port=5000"
+  traefik:
+    image: traefik:v2.11
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080" # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # Eksempel på hvordan du kan eksponere en backend-tjeneste via Traefik:
+  # autopilotservice:
+  #   build: ./src/AutopilotService
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.autopilot.rule=PathPrefix(`/api/autopilot`)"
+  #     - "traefik.http.services.autopilot.loadbalancer.server.port=80"
   nats:
     image: nats:2.10.16-alpine # Bruk en stabil versjon av NATS
     container_name: o-sim-nats
