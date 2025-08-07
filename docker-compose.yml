@@ -76,6 +76,19 @@ services:
   #     - "traefik.enable=true"
   #     - "traefik.http.routers.autopilot.rule=PathPrefix(`/api/autopilot`)"
   #     - "traefik.http.services.autopilot.loadbalancer.server.port=80"
+  webdashboard:
+    build:
+      context: ./src/Frontend/WebDashboard
+      dockerfile: Dockerfile
+    depends_on:
+      - traefik
+      - gatewayproxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=PathPrefix(`/`)"
+      - "traefik.http.services.dashboard.loadbalancer.server.port=80"
+      - "traefik.http.routers.dashboard.priority=1"  # Laveste prioritet, matcher bare hvis ingen andre matcher
+
   nats:
     image: nats:2.10.16-alpine # Bruk en stabil versjon av NATS
     container_name: o-sim-nats
