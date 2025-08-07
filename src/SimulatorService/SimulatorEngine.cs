@@ -32,7 +32,7 @@ namespace SimulatorService
         // Konstanter
         private const double BaseTurnRate = 1.0;        // grader per sekund
         private const double TurnRatePerKnot = 0.5;     // ekstra grader/s per knop
-        private const double Acceleration = 1000.0;        // knop per sekund
+        private const double Acceleration = 1.0;        // knop per sekund
 
         // Offentlig tilgjengelig tilstand (for UI/logging)
         public double Latitude => _latitude;

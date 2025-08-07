@@ -7,6 +7,10 @@ services:
       dockerfile: SimulatorService/Dockerfile
     depends_on:
       - nats
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.simulator.rule=PathPrefix(`/api/simulator`)"
+      - "traefik.http.services.simulator.loadbalancer.server.port=5001"
 
   environmentservice:
     build:
@@ -14,6 +18,10 @@ services:
       dockerfile: EnvironmentService/Dockerfile
     depends_on:
       - nats
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.environment.rule=PathPrefix(`/api/environment`)"
+      - "traefik.http.services.environment.loadbalancer.server.port=5002"
 
   loggerservice:
     build:
@@ -21,6 +29,10 @@ services:
       dockerfile: LoggerService/Dockerfile
     depends_on:
       - nats
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.logger.rule=PathPrefix(`/api/logs`)"
+      - "traefik.http.services.logger.loadbalancer.server.port=5003"
 
   autopilotservice:
     labels:

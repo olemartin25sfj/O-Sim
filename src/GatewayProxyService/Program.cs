@@ -11,7 +11,33 @@ app.Map("/ws/nav", async context =>
 {
     if (context.WebSockets.IsWebSocketRequest)
     {
-        using var nats = new ConnectionFactory().CreateConnection("nats://nats:4222");
+        IConnection? natsConnection = null;
+        int retries = 10;
+
+        // Prøv å koble til NATS med retry
+        for (int i = 0; i < retries; i++)
+        {
+            try
+            {
+                natsConnection = new ConnectionFactory().CreateConnection("nats://nats:4222");
+                app.Logger.LogInformation("Koblet til NATS-server");
+                break;
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning($"NATS-tilkobling feilet ({i + 1}/{retries}): {ex.Message}");
+                await Task.Delay(2000);
+            }
+        }
+
+        if (natsConnection == null)
+        {
+            app.Logger.LogError("Kunne ikke koble til NATS etter flere forsøk.");
+            context.Response.StatusCode = 503;
+            return;
+        }
+
+        using var nats = natsConnection;
         using var ws = await context.WebSockets.AcceptWebSocketAsync();
 
         var cts = new CancellationTokenSource();

@@ -17,7 +17,7 @@ namespace SimulatorService
         private bool _hasTarget;
 
         private const double ArrivalThresholdNm = 0.05; // 50 meter
-        private const double CruisingSpeed = 1000.0; // Høy fart for rask simulering
+        private const double CruisingSpeed = 15.0; // Høy fart for rask simulering
 
         public AutopilotService(SimulatorEngine engine)
         {

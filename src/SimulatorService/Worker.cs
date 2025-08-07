@@ -15,7 +15,7 @@ namespace SimulatorService
         private readonly ILogger<Worker> _logger;
         private readonly SimulatorEngine _engine;
         private readonly AutopilotService _autopilot;
-        private readonly TimeSpan _tickInterval = TimeSpan.FromMilliseconds(10); // 10 ms tick for rask simulering
+        private readonly TimeSpan _tickInterval = TimeSpan.FromMilliseconds(1000);
 
         public Worker(ILogger<Worker> logger)
         {
@@ -39,11 +39,36 @@ namespace SimulatorService
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            // Sett opp NATS-tilkobling og abonnement
-            var opts = ConnectionFactory.GetDefaultOptions();
-            opts.Url = "nats://localhost:4222";
-            using var natsConnection = new ConnectionFactory().CreateConnection(opts);
-            var envSubscription = natsConnection.SubscribeAsync("sim.sensors.env", (sender, args) =>
+            IConnection? natsConnection = null;
+            int retries = 10;
+
+            // Prøv å koble til NATS med retry
+            for (int i = 0; i < retries && !stoppingToken.IsCancellationRequested; i++)
+            {
+                try
+                {
+                    var opts = ConnectionFactory.GetDefaultOptions();
+                    opts.Url = "nats://nats:4222";
+                    natsConnection = new ConnectionFactory().CreateConnection(opts);
+                    _logger.LogInformation("Koblet til NATS-server");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"NATS-tilkobling feilet ({i + 1}/{retries}): {ex.Message}");
+                    await Task.Delay(2000, stoppingToken);
+                }
+            }
+
+            if (natsConnection == null)
+            {
+                _logger.LogError("Kunne ikke koble til NATS etter flere forsøk. Avslutter.");
+                return;
+            }
+
+            using (natsConnection)
+            {
+                var envSubscription = natsConnection.SubscribeAsync("sim.sensors.env", (sender, args) =>
             {
                 try
                 {
@@ -66,40 +91,41 @@ namespace SimulatorService
                 }
             });
 
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                _autopilot.Update();
-                _engine.Update(_tickInterval);
-
-
-                // Logg posisjon, heading, fart
-                _logger.LogInformation("Tid: {time}", DateTimeOffset.Now);
-                _logger.LogInformation("Posisjon: {lat:F5}, {lon:F5}", _engine.Latitude, _engine.Longitude);
-                _logger.LogInformation("Heading: {heading:F1}°  Fart: {speed:F1} knop", _engine.Heading, _engine.Speed);
-
-                // Logg mål og distanse til mål hvis aktivt
-                var autopilotType = _autopilot.GetType();
-                var targetLatField = autopilotType.GetField("_targetLatitude", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                var targetLonField = autopilotType.GetField("_targetLongitude", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                var hasTargetField = autopilotType.GetField("_hasTarget", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (hasTargetField != null && targetLatField != null && targetLonField != null)
+                while (!stoppingToken.IsCancellationRequested)
                 {
-                    var hasTargetObj = hasTargetField.GetValue(_autopilot);
-                    if (hasTargetObj is bool hasTarget && hasTarget)
+                    _autopilot.Update();
+                    _engine.Update(_tickInterval);
+
+
+                    // Logg posisjon, heading, fart
+                    _logger.LogInformation("Tid: {time}", DateTimeOffset.Now);
+                    _logger.LogInformation("Posisjon: {lat:F5}, {lon:F5}", _engine.Latitude, _engine.Longitude);
+                    _logger.LogInformation("Heading: {heading:F1}°  Fart: {speed:F1} knop", _engine.Heading, _engine.Speed);
+
+                    // Logg mål og distanse til mål hvis aktivt
+                    var autopilotType = _autopilot.GetType();
+                    var targetLatField = autopilotType.GetField("_targetLatitude", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    var targetLonField = autopilotType.GetField("_targetLongitude", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    var hasTargetField = autopilotType.GetField("_hasTarget", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (hasTargetField != null && targetLatField != null && targetLonField != null)
                     {
-                        var latObj = targetLatField.GetValue(_autopilot);
-                        var lonObj = targetLonField.GetValue(_autopilot);
-                        if (latObj is double targetLat && lonObj is double targetLon)
+                        var hasTargetObj = hasTargetField.GetValue(_autopilot);
+                        if (hasTargetObj is bool hasTarget && hasTarget)
                         {
-                            double distNm = SimulatorService.AutopilotService
-                                .GetDistanceNm(_engine.Latitude, _engine.Longitude, targetLat, targetLon);
-                            _logger.LogInformation("Mål: {lat:F5}, {lon:F5}  |  Distanse til mål: {dist:F2} nm", targetLat, targetLon, distNm);
+                            var latObj = targetLatField.GetValue(_autopilot);
+                            var lonObj = targetLonField.GetValue(_autopilot);
+                            if (latObj is double targetLat && lonObj is double targetLon)
+                            {
+                                double distNm = SimulatorService.AutopilotService
+                                    .GetDistanceNm(_engine.Latitude, _engine.Longitude, targetLat, targetLon);
+                                _logger.LogInformation("Mål: {lat:F5}, {lon:F5}  |  Distanse til mål: {dist:F2} nm", targetLat, targetLon, distNm);
+                            }
                         }
                     }
-                }
-                _logger.LogInformation("---------------------------------------------------");
+                    _logger.LogInformation("---------------------------------------------------");
 
-                await Task.Delay(_tickInterval, stoppingToken);
+                    await Task.Delay(_tickInterval, stoppingToken);
+                }
             }
         }
     }
