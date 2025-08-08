@@ -96,33 +96,24 @@ namespace SimulatorService
                     _autopilot.Update();
                     _engine.Update(_tickInterval);
 
-
-                    // Logg posisjon, heading, fart
-                    _logger.LogInformation("Tid: {time}", DateTimeOffset.Now);
-                    _logger.LogInformation("Posisjon: {lat:F5}, {lon:F5}", _engine.Latitude, _engine.Longitude);
-                    _logger.LogInformation("Heading: {heading:F1}°  Fart: {speed:F1} knop", _engine.Heading, _engine.Speed);
-
-                    // Logg mål og distanse til mål hvis aktivt
-                    var autopilotType = _autopilot.GetType();
-                    var targetLatField = autopilotType.GetField("_targetLatitude", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    var targetLonField = autopilotType.GetField("_targetLongitude", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    var hasTargetField = autopilotType.GetField("_hasTarget", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    if (hasTargetField != null && targetLatField != null && targetLonField != null)
+                    // Publish navigation data to NATS
+                    var navigationData = new NavigationData
                     {
-                        var hasTargetObj = hasTargetField.GetValue(_autopilot);
-                        if (hasTargetObj is bool hasTarget && hasTarget)
-                        {
-                            var latObj = targetLatField.GetValue(_autopilot);
-                            var lonObj = targetLonField.GetValue(_autopilot);
-                            if (latObj is double targetLat && lonObj is double targetLon)
-                            {
-                                double distNm = SimulatorService.AutopilotService
-                                    .GetDistanceNm(_engine.Latitude, _engine.Longitude, targetLat, targetLon);
-                                _logger.LogInformation("Mål: {lat:F5}, {lon:F5}  |  Distanse til mål: {dist:F2} nm", targetLat, targetLon, distNm);
-                            }
-                        }
+                        Latitude = _engine.Latitude,
+                        Longitude = _engine.Longitude,
+                        Heading = _engine.Heading,
+                        SpeedKnots = _engine.Speed,
+                        Timestamp = DateTime.UtcNow
+                    };
+
+                    var json = JsonSerializer.Serialize(navigationData);
+                    natsConnection.Publish("sim.sensors.nav", System.Text.Encoding.UTF8.GetBytes(json));
+
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.LogDebug("Nav Update: Pos({lat:F5}, {lon:F5}) Hdg:{heading:F1}° Spd:{speed:F1}kt",
+                            _engine.Latitude, _engine.Longitude, _engine.Heading, _engine.Speed);
                     }
-                    _logger.LogInformation("---------------------------------------------------");
 
                     await Task.Delay(_tickInterval, stoppingToken);
                 }

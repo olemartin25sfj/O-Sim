@@ -15,6 +15,8 @@ import {
   EnvironmentData,
   AlarmData,
   WebSocketMessage,
+  SetCourseCommand,
+  SetSpeedCommand,
 } from "./types/messages";
 
 const darkTheme = createTheme({
@@ -58,6 +60,97 @@ function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ course }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Failed to set course:", error);
+    }
+  };
+
+  const handleSetSpeed = async (speed: number) => {
+    try {
+      const response = await fetch("/api/simulator/speed", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ speed }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Failed to set speed:", error);
+    }
+  };
+
+  return (
+    <ThemeProvider theme={darkTheme}>
+      <CssBaseline />
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={8}>
+            <VesselMap navigation={navigation} />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <ControlPanel onSetCourse={handleSetCourse} onSetSpeed={handleSetSpeed} />
+              </Grid>
+              <Grid item xs={12}>
+                <EnvironmentPanel environment={environment} />
+              </Grid>
+              <Grid item xs={12}>
+                <AlarmPanel alarms={alarms} />
+              </Grid>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Container>
+    </ThemeProvider>
+  );
+
+  const handleSetCourse = async (course: number) => {
+    try {
+      const response = await fetch("/api/simulator/course", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ course }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Failed to set course:", error);
+    }
+  };
+
+  const handleSetSpeed = async (speed: number) => {
+    try {
+      const response = await fetch("/api/simulator/speed", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ speed }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Failed to set speed:", error);
+    }
+  };
         },
         body: JSON.stringify({ course }),
       });
