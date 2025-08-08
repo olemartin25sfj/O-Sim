@@ -47,6 +47,11 @@ namespace SimulatorService
             _longitude = longitude;
         }
 
+        public void SetDesiredCourse(double course)
+        {
+            _desiredHeading = course;
+        }
+
         public void SetDestination(double lat, double lon)
         {
             _targetLat = lat;

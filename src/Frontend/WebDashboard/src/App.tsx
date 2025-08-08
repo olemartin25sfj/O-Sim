@@ -15,8 +15,6 @@ import {
   EnvironmentData,
   AlarmData,
   WebSocketMessage,
-  SetCourseCommand,
-  SetSpeedCommand,
 } from "./types/messages";
 
 const darkTheme = createTheme({
@@ -56,17 +54,16 @@ function App() {
 
   const handleSetCourse = async (course: number) => {
     try {
-      const response = await fetch("/api/simulator/course", {
+      await fetch("/api/simulator/course", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ course }),
+        body: JSON.stringify({
+          timestamp: new Date().toISOString(),
+          targetCourseDegrees: course,
+        }),
       });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
     } catch (error) {
       console.error("Failed to set course:", error);
     }
@@ -74,110 +71,18 @@ function App() {
 
   const handleSetSpeed = async (speed: number) => {
     try {
-      const response = await fetch("/api/simulator/speed", {
+      await fetch("/api/simulator/speed", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ speed }),
+        body: JSON.stringify({
+          timestamp: new Date().toISOString(),
+          targetSpeedKnots: speed,
+        }),
       });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
     } catch (error) {
       console.error("Failed to set speed:", error);
-    }
-  };
-
-  return (
-    <ThemeProvider theme={darkTheme}>
-      <CssBaseline />
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={8}>
-            <VesselMap navigation={navigation} />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
-                <ControlPanel onSetCourse={handleSetCourse} onSetSpeed={handleSetSpeed} />
-              </Grid>
-              <Grid item xs={12}>
-                <EnvironmentPanel environment={environment} />
-              </Grid>
-              <Grid item xs={12}>
-                <AlarmPanel alarms={alarms} />
-              </Grid>
-            </Grid>
-          </Grid>
-        </Grid>
-      </Container>
-    </ThemeProvider>
-  );
-
-  const handleSetCourse = async (course: number) => {
-    try {
-      const response = await fetch("/api/simulator/course", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ course }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-    } catch (error) {
-      console.error("Failed to set course:", error);
-    }
-  };
-
-  const handleSetSpeed = async (speed: number) => {
-    try {
-      const response = await fetch("/api/simulator/speed", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ speed }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-    } catch (error) {
-      console.error("Failed to set speed:", error);
-    }
-  };
-        },
-        body: JSON.stringify({ course }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to set course");
-      }
-    } catch (error) {
-      console.error("Error setting course:", error);
-    }
-  };
-
-  const handleSetSpeed = async (speed: number) => {
-    try {
-      const response = await fetch("/api/simulator/speed", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ speed }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to set speed");
-      }
-    } catch (error) {
-      console.error("Error setting speed:", error);
     }
   };
 
@@ -192,13 +97,15 @@ function App() {
           <Grid item xs={12} md={4} sx={{ height: "70vh", overflow: "auto" }}>
             <Grid container spacing={2}>
               <Grid item xs={12}>
-                <EnvironmentPanel environment={environment} />
-              </Grid>
-              <Grid item xs={12}>
                 <ControlPanel
                   onSetCourse={handleSetCourse}
                   onSetSpeed={handleSetSpeed}
+                  currentCourse={navigation?.heading}
+                  currentSpeed={navigation?.speed}
                 />
+              </Grid>
+              <Grid item xs={12}>
+                <EnvironmentPanel environment={environment} />
               </Grid>
               <Grid item xs={12}>
                 <AlarmPanel alarms={alarms} />
