@@ -19,6 +19,26 @@ app.MapGet("/api/simulator/status", () =>
     return Results.Ok(new { Status = "Running", Timestamp = DateTime.UtcNow });
 });
 
+app.MapPost("/api/simulator/position", async (HttpContext context, SimulatorEngine engine) =>
+{
+    try
+    {
+        using var reader = new StreamReader(context.Request.Body);
+        var body = await reader.ReadToEndAsync();
+        var command = System.Text.Json.JsonSerializer.Deserialize<SetPositionCommand>(body);
+
+        if (command == null)
+            return Results.BadRequest("Invalid command format");
+
+        engine.SetInitialPosition(command.Latitude, command.Longitude);
+        return Results.Ok(new { Message = $"Position set to {command.Latitude}, {command.Longitude}" });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(ex.Message);
+    }
+});
+
 app.MapPost("/api/simulator/course", async (HttpContext context, SimulatorEngine engine) =>
 {
     try

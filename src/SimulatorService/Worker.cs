@@ -23,18 +23,15 @@ namespace SimulatorService
             _engine = new SimulatorEngine();
             _autopilot = new AutopilotService(_engine);
 
-            // Sett startposisjon (f.eks. Horten)
-            _engine.SetInitialPosition(59.4067, 10.4899);
+            // Sett startposisjon (Horten havn)
+            _engine.SetInitialPosition(59.4167, 10.4833);
 
             // Sett miljøforhold (vind, strøm)
             _engine.SetEnvironment(
-                windSpeed: 2.0,
-                windDirection: 180.0,
-                currentSpeed: 1.0,
-                currentDirection: 90.0);
-
-            // Sett destinasjon via autopilot
-            _autopilot.SetDestination(59.4344, 10.6574);
+                windSpeed: Random.Shared.NextDouble() * 10.0,      // 0-10 knop vind
+                windDirection: Random.Shared.NextDouble() * 360.0, // tilfeldig retning
+                currentSpeed: Random.Shared.NextDouble() * 2.0,    // 0-2 knop strøm
+                currentDirection: Random.Shared.NextDouble() * 360.0); // tilfeldig retning
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)

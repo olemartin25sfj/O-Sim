@@ -86,6 +86,24 @@ function App() {
     }
   };
 
+  const handleSetPosition = async (latitude: number, longitude: number) => {
+    try {
+      await fetch("/api/simulator/position", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          timestamp: new Date().toISOString(),
+          latitude,
+          longitude,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to set position:", error);
+    }
+  };
+
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
@@ -100,6 +118,7 @@ function App() {
                 <ControlPanel
                   onSetCourse={handleSetCourse}
                   onSetSpeed={handleSetSpeed}
+                  onSetPosition={handleSetPosition}
                   currentCourse={navigation?.heading}
                   currentSpeed={navigation?.speed}
                 />

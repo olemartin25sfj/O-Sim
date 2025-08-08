@@ -1,64 +1,132 @@
-import { useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import { DivIcon } from "leaflet";
+import { useEffect, useState } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  useMap,
+  Polyline,
+} from "react-leaflet";
+import { Icon, LatLng } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { Box, Paper, Fab } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
 import { NavigationData } from "../types/messages";
-import "./VesselMap.css";
+import { RouteDialog } from "./RouteDialog";
+
+// Custom ship icon
+const createShipIcon = (heading: number) =>
+  new Icon({
+    iconUrl: "/ship-icon.svg",
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -16],
+    className: "ship-icon",
+    style: { transform: `rotate(${heading}deg)` },
+  });
+
+// Custom component to update map center when vessel position changes
+function MapCenterUpdater({ position }: { position: LatLng }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setView(position, map.getZoom());
+  }, [map, position]);
+
+  return null;
+}
 
 interface VesselMapProps {
   navigation: NavigationData | null;
 }
 
-// Component to update map center when navigation changes
-const MapUpdater: React.FC<{ navigation: NavigationData }> = ({
-  navigation,
-}) => {
-  const map = useMap();
+interface Route {
+  points: [number, number][];
+}
 
-  useEffect(() => {
-    map.setView([navigation.latitude, navigation.longitude]);
-  }, [map, navigation.latitude, navigation.longitude]);
+export const VesselMap = ({ navigation }: VesselMapProps) => {
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  return null;
-};
+  const defaultPosition: [number, number] = [60.391262, 5.322054]; // Bergen
+  const position: [number, number] = navigation
+    ? [navigation.latitude, navigation.longitude]
+    : defaultPosition;
 
-const createShipIcon = (heading: number) =>
-  new DivIcon({
-    className: "vessel-icon",
-    html: `<div style="transform: rotate(${heading}deg);">
-           <img src="/ship-icon.svg" width="32" height="32" style="transform: translate(-16px, -16px);" />
-         </div>`,
-    iconSize: [32, 32],
-  });
-
-export const VesselMap: React.FC<VesselMapProps> = ({ navigation }) => {
-  if (!navigation) return null;
+  const handleAddRoute = (routePoints: [number, number][]) => {
+    setRoutes([
+      ...routes,
+      {
+        points: routePoints,
+      },
+    ]);
+  };
 
   return (
-    <MapContainer
-      center={[navigation.latitude, navigation.longitude]}
-      zoom={13}
-      style={{ height: "100%", width: "100%" }}
-    >
-      <MapUpdater navigation={navigation} />
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    <Paper sx={{ height: "100%", p: 1 }}>
+      <Box sx={{ height: "100%", width: "100%", position: "relative" }}>
+        <MapContainer
+          center={position}
+          zoom={13}
+          style={{ height: "100%", width: "100%" }}
+        >
+          {/* OpenSeaMap maritime layer */}
+          <TileLayer
+            url="https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="http://www.openseamap.org">OpenSeaMap</a> contributors'
+          />
+          {/* OpenStreetMap base layer */}
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          />
+          {/* Draw routes */}
+          {routes.map((route, index) => (
+            <Polyline
+              key={index}
+              positions={route.points}
+              color="#2196f3"
+              weight={3}
+              opacity={0.7}
+            />
+          ))}
+          {/* Current vessel position */}
+          {navigation && (
+            <Marker
+              position={position}
+              icon={createShipIcon(navigation.heading)}
+            >
+              <Popup>
+                <div>
+                  <strong>Vessel Position</strong>
+                  <br />
+                  Latitude: {navigation.latitude.toFixed(6)}
+                  <br />
+                  Longitude: {navigation.longitude.toFixed(6)}
+                  <br />
+                  Heading: {navigation.heading.toFixed(1)}°<br />
+                  Speed: {navigation.speed.toFixed(1)} knots
+                </div>
+              </Popup>
+            </Marker>
+          )}
+          <MapCenterUpdater position={new LatLng(position[0], position[1])} />
+        </MapContainer>
+        {/* Add route button */}
+        <Fab
+          color="primary"
+          aria-label="add route"
+          onClick={() => setDialogOpen(true)}
+          sx={{ position: "absolute", bottom: 16, right: 16 }}
+        >
+          <AddIcon />
+        </Fab>
+      </Box>
+      <RouteDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onAddRoute={handleAddRoute}
       />
-      <Marker
-        position={[navigation.latitude, navigation.longitude]}
-        icon={createShipIcon(navigation.heading)}
-      >
-        <Popup>
-          <div>
-            <h3>Vessel Position</h3>
-            <p>Lat: {navigation.latitude.toFixed(5)}</p>
-            <p>Lon: {navigation.longitude.toFixed(5)}</p>
-            <p>Heading: {navigation.heading.toFixed(1)}°</p>
-            <p>Speed: {navigation.speed.toFixed(1)} knots</p>
-          </div>
-        </Popup>
-      </Marker>
-    </MapContainer>
+    </Paper>
   );
 };

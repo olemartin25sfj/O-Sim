@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { Paper, Typography, TextField, Button, Grid } from "@mui/material";
+import { SetPositionDialog } from "./SetPositionDialog";
 
 interface ControlPanelProps {
   onSetCourse: (course: number) => void;
   onSetSpeed: (speed: number) => void;
+  onSetPosition: (latitude: number, longitude: number) => void;
   currentCourse?: number;
   currentSpeed?: number;
 }
@@ -11,11 +13,13 @@ interface ControlPanelProps {
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   onSetCourse,
   onSetSpeed,
+  onSetPosition,
   currentCourse,
   currentSpeed,
 }) => {
   const [course, setCourse] = useState(currentCourse?.toString() || "");
   const [speed, setSpeed] = useState(currentSpeed?.toString() || "");
+  const [positionDialogOpen, setPositionDialogOpen] = useState(false);
 
   const handleCourseSubmit = () => {
     const courseNum = parseFloat(course);
@@ -45,7 +49,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             onChange={(e) => setCourse(e.target.value)}
             type="number"
             InputProps={{
-              inputProps: { min: 0, max: 360 }
+              inputProps: { min: 0, max: 360 },
             }}
           />
           {currentCourse !== undefined && (
@@ -72,7 +76,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             onChange={(e) => setSpeed(e.target.value)}
             type="number"
             InputProps={{
-              inputProps: { min: 0 }
+              inputProps: { min: 0 },
             }}
           />
           {currentSpeed !== undefined && (
@@ -91,7 +95,22 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             Set Speed
           </Button>
         </Grid>
+        <Grid item xs={12}>
+          <Button
+            fullWidth
+            variant="contained"
+            color="secondary"
+            onClick={() => setPositionDialogOpen(true)}
+          >
+            Set Position
+          </Button>
+        </Grid>
       </Grid>
+      <SetPositionDialog
+        open={positionDialogOpen}
+        onClose={() => setPositionDialogOpen(false)}
+        onSetPosition={onSetPosition}
+      />
     </Paper>
   );
 };
