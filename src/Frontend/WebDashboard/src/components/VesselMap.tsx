@@ -1,6 +1,6 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import { Icon, DivIcon } from "leaflet";
+import { DivIcon } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { NavigationData } from "../types/messages";
 import "./VesselMap.css";
@@ -40,6 +40,7 @@ export const VesselMap: React.FC<VesselMapProps> = ({ navigation }) => {
       zoom={13}
       style={{ height: "100%", width: "100%" }}
     >
+      <MapUpdater navigation={navigation} />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

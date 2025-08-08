@@ -1,4 +1,4 @@
-import React from "react";
+import * as React from "react";
 import { Paper, Typography, Grid } from "@mui/material";
 import { EnvironmentData } from "../types/messages";
 

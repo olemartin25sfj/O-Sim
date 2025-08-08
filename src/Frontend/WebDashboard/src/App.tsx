@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Container,
   Grid,
@@ -27,7 +27,6 @@ function App() {
   const [navigation, setNavigation] = useState<NavigationData | null>(null);
   const [environment, setEnvironment] = useState<EnvironmentData | null>(null);
   const [alarms, setAlarms] = useState<AlarmData[]>([]);
-  const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
     const socket = new WebSocket("ws://localhost/ws/nav");
@@ -47,8 +46,6 @@ function App() {
           break;
       }
     };
-
-    setWs(socket);
 
     return () => {
       socket.close();

@@ -9,9 +9,15 @@ WORKDIR /app
 # Copy package files and install dependencies
 COPY package*.json ./
 RUN npm install
+RUN npm install -g typescript
 
-# Copy the rest of the application code
-COPY . .
+# Copy source files and configuration
+COPY src/ ./src/
+COPY public/ ./public/
+COPY index.html .
+COPY tsconfig.json .
+COPY tsconfig.node.json .
+COPY vite.config.ts .
 
 # Build the application
 RUN npm run build
