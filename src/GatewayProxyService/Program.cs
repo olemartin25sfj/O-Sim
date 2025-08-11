@@ -1,11 +1,56 @@
 using System.Text;
 using System.Text.Json;
+using GatewayProxyService;
 using NATS.Client;
 
+// Load static routes catalog at startup (types in Routes.cs)
+var routesFile = Path.Combine(AppContext.BaseDirectory, "Data", "routes.json");
+var routesRaw = JsonSerializer.Deserialize<List<RouteRaw>>(File.ReadAllText(routesFile)) ?? new();
+var routes = routesRaw.Select(r => RouteComputed.From(r)).ToList();
+var routeMetas = new List<RouteMeta>();
+var routeDetails = new Dictionary<string, RouteDetail>(StringComparer.OrdinalIgnoreCase);
+foreach (var r in routes)
+{
+    routeMetas.Add(r.meta);
+    routeDetails[r.detail.Id] = r.detail;
+}
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 var app = builder.Build();
 
+app.UseCors();
+
 app.UseWebSockets();
+
+// GET /api/routes?bbox=minLat,minLon,maxLat,maxLon&limit=10
+app.MapGet("/api/routes", (HttpRequest req) =>
+{
+    string? bbox = req.Query["bbox"].FirstOrDefault();
+    int limit = 50;
+    if (int.TryParse(req.Query["limit"], out var l) && l > 0 && l < limit)
+        limit = l;
+
+    IEnumerable<RouteMeta> result = routeMetas;
+    if (!string.IsNullOrWhiteSpace(bbox))
+    {
+        var parts = bbox.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 4 || !double.TryParse(parts[0], out var minLat) || !double.TryParse(parts[1], out var minLon) || !double.TryParse(parts[2], out var maxLat) || !double.TryParse(parts[3], out var maxLon))
+        {
+            return Results.BadRequest(new { error = "bbox must be 'minLat,minLon,maxLat,maxLon'" });
+        }
+        result = result.Where(r => !(r.MaxLat < minLat || r.MinLat > maxLat || r.MaxLon < minLon || r.MinLon > maxLon));
+    }
+    return Results.Ok(result.Take(limit));
+});
+
+// GET /api/routes/{id}
+app.MapGet("/api/routes/{id}", (string id) =>
+{
+    if (routeDetails.TryGetValue(id, out var detail))
+        return Results.Ok(detail);
+    return Results.NotFound();
+});
 
 app.Map("/ws/nav", async context =>
 {

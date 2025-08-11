@@ -1,4 +1,4 @@
-# docker-compose.yml
+version: "3.9"
 
 services:
   simulatorservice:
@@ -8,9 +8,9 @@ services:
     depends_on:
       - nats
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.simulator.rule=PathPrefix(`/api/simulator`)"
-      - "traefik.http.services.simulator.loadbalancer.server.port=5001"
+      - traefik.enable=true
+      - traefik.http.routers.simulator.rule=PathPrefix(`/api/simulator`)
+      - traefik.http.services.simulator.loadbalancer.server.port=5001
 
   environmentservice:
     build:
@@ -19,9 +19,9 @@ services:
     depends_on:
       - nats
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.environment.rule=PathPrefix(`/api/environment`)"
-      - "traefik.http.services.environment.loadbalancer.server.port=5002"
+      - traefik.enable=true
+      - traefik.http.routers.environment.rule=PathPrefix(`/api/environment`)
+      - traefik.http.services.environment.loadbalancer.server.port=5002
 
   loggerservice:
     build:
@@ -30,9 +30,9 @@ services:
     depends_on:
       - nats
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.logger.rule=PathPrefix(`/api/logs`)"
-      - "traefik.http.services.logger.loadbalancer.server.port=5003"
+      - traefik.enable=true
+      - traefik.http.routers.logger.rule=PathPrefix(`/api/logs`)
+      - traefik.http.services.logger.loadbalancer.server.port=5003
 
   alarmservice:
     build:
@@ -41,20 +41,20 @@ services:
     depends_on:
       - nats
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.alarm.rule=PathPrefix(`/api/alarms`)"
-      - "traefik.http.services.alarm.loadbalancer.server.port=5004"
+      - traefik.enable=true
+      - traefik.http.routers.alarm.rule=PathPrefix(`/api/alarms`)
+      - traefik.http.services.alarm.loadbalancer.server.port=5004
 
   autopilotservice:
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.autopilot.rule=PathPrefix(`/api/autopilot`)"
-      - "traefik.http.services.autopilot.loadbalancer.server.port=80"
     build:
       context: ./src
       dockerfile: AutopilotService/Dockerfile
     depends_on:
       - nats
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.autopilot.rule=PathPrefix(`/api/autopilot`)
+      - traefik.http.services.autopilot.loadbalancer.server.port=80
 
   gatewayproxy:
     build:
@@ -65,28 +65,23 @@ services:
     ports:
       - "5000:5000"
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.gatewayproxy.rule=PathPrefix(`/ws`)"
-      - "traefik.http.services.gatewayproxy.loadbalancer.server.port=5000"
+      - traefik.enable=true
+      - traefik.http.routers.gatewayproxy-ws.rule=PathPrefix(`/ws`)
+      - traefik.http.services.gatewayproxy.loadbalancer.server.port=5000
+      - traefik.http.routers.gatewayproxy-routes.rule=PathPrefix(`/api/routes`)
+
   traefik:
     image: traefik:v2.11
     command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--entrypoints.web.address=:80"
+      - --api.insecure=true
+      - --providers.docker=true
+      - --entrypoints.web.address=:80
     ports:
       - "80:80"
       - "8080:8080" # Traefik dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
-  # Eksempel på hvordan du kan eksponere en backend-tjeneste via Traefik:
-  # autopilotservice:
-  #   build: ./src/AutopilotService
-  #   labels:
-  #     - "traefik.enable=true"
-  #     - "traefik.http.routers.autopilot.rule=PathPrefix(`/api/autopilot`)"
-  #     - "traefik.http.services.autopilot.loadbalancer.server.port=80"
   webdashboard:
     build:
       context: ./src/Frontend/WebDashboard
@@ -97,36 +92,26 @@ services:
     ports:
       - "3000:3000"
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.dashboard.rule=PathPrefix(`/`)"
-      - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
-      - "traefik.http.routers.dashboard.priority=1" # Laveste prioritet, matcher bare hvis ingen andre matcher
+      - traefik.enable=true
+      - traefik.http.routers.dashboard.rule=PathPrefix(`/`)
+      - traefik.http.services.dashboard.loadbalancer.server.port=3000
+      - traefik.http.routers.dashboard.priority=1
 
   nats:
-    image: nats:2.10.16-alpine # Bruk en stabil versjon av NATS
+    image: nats:2.10.16-alpine
     container_name: o-sim-nats
     ports:
-      - "4222:4222" # Klientport
-      - "8222:8222" # Monitoring port (HTTP)
-    command: -js # Aktiver JetStream (selv om du ikke bruker den aktivt i starten, er det greit å ha den klar)
+      - "4222:4222"
+      - "8222:8222"
+    command: -js
     healthcheck:
-      test:
-        [
-          "CMD",
-          "nats",
-          "req",
-          "--raw",
-          "--timeout",
-          "1s",
-          "localhost:4222",
-          "INFO",
-        ]
+      test: ["CMD", "nats", "req", "--raw", "--timeout", "1s", "localhost:4222", "INFO"]
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped # Start containeren automatisk ved systemstart eller feil
+    restart: unless-stopped
     volumes:
-      - nats_data:/data # Volum for vedvarende data (f.eks. for JetStream)
+      - nats_data:/data
 
 volumes:
   nats_data:

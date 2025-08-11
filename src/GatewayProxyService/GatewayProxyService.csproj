@@ -10,4 +10,11 @@
     <PackageReference Include="NATS.Client" Version="1.1.8" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Use Update instead of Include to avoid duplicating the implicit Content item -->
+    <Content Update="Data/routes.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
