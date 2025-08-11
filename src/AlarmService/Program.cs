@@ -3,20 +3,24 @@ using NATS.Client;
 using OSim.Shared.Messages;
 
 // Enkel alarm service som overvåker navigasjons- og miljødata og publiserer AlarmTriggered ved terskelbrudd.
-// Regler (første versjon):
-// 1. Overspeed: speedKnots > 20
-// 2. OffCourse: avvik mellom headingDegrees og courseOverGroundDegrees > 15 grader (hvis begge finnes)
-// 3. HighWind: windSpeedKnots > 25
-// 4. StrongCurrent: currentSpeedKnots > 4
-// Debounce: Publiser maks én alarm per type per 30 sek hvis fortsatt aktiv.
+// Regler hentes nå fra konfig (appsettings.json -> AlarmOptions)
 
 var lastAlarm = new Dictionary<string, DateTime>();
-TimeSpan alarmCooldown = TimeSpan.FromSeconds(30);
+var activeAlarms = new Dictionary<string, AlarmTriggered>();
 
 // Start minimal web server for status
 var builder = WebApplication.CreateBuilder(args);
+
+var optionsSection = builder.Configuration.GetSection("AlarmOptions");
+double overspeed = optionsSection.GetValue("OverspeedThresholdKnots", 20.0);
+double offCourse = optionsSection.GetValue("OffCourseThresholdDegrees", 15.0);
+double highWind = optionsSection.GetValue("HighWindThresholdKnots", 25.0);
+double strongCurrent = optionsSection.GetValue("StrongCurrentThresholdKnots", 4.0);
+int cooldownSeconds = optionsSection.GetValue("CooldownSeconds", 30);
+TimeSpan alarmCooldown = TimeSpan.FromSeconds(cooldownSeconds);
 var app = builder.Build();
 app.MapGet("/api/alarm/status", () => Results.Ok(new { Service = "AlarmService", Status = "Running", TimestampUtc = DateTime.UtcNow }));
+app.MapGet("/api/alarm/active", () => Results.Ok(activeAlarms.Values));
 _ = app.RunAsync("http://0.0.0.0:5004");
 
 IConnection? connection = null;
@@ -62,6 +66,7 @@ void PublishAlarm(string type, string message, AlarmSeverity severity)
     var json = JsonSerializer.Serialize(alarm);
     connection.Publish("alarm.triggers", System.Text.Encoding.UTF8.GetBytes(json));
     Console.WriteLine($"AlarmService publiserte alarm: {json}");
+    activeAlarms[type] = alarm;
 }
 
 // Abonner på navigasjonsdata
@@ -80,17 +85,17 @@ connection.SubscribeAsync("sim.sensors.nav", (s, a) =>
         double? cog = root.TryGetProperty("courseOverGroundDegrees", out var cg) && cg.TryGetDouble(out var cv) ? cv :
                        root.TryGetProperty("CourseOverGroundDegrees", out var cg2) && cg2.TryGetDouble(out var cv2) ? cv2 : null;
 
-        if (speed.HasValue && speed.Value > 20)
+        if (speed.HasValue && speed.Value > overspeed)
         {
-            PublishAlarm("Overspeed", $"Speed {speed:F1} kts > 20", AlarmSeverity.Warning);
+            PublishAlarm("Overspeed", $"Speed {speed:F1} kts > {overspeed}", AlarmSeverity.Warning);
         }
         if (heading.HasValue && cog.HasValue)
         {
             var diff = Math.Abs(heading.Value - cog.Value);
             if (diff > 180) diff = 360 - diff;
-            if (diff > 15)
+            if (diff > offCourse)
             {
-                PublishAlarm("OffCourse", $"Heading/COG diff {diff:F1}° > 15°", AlarmSeverity.Info);
+                PublishAlarm("OffCourse", $"Heading/COG diff {diff:F1}° > {offCourse}°", AlarmSeverity.Info);
             }
         }
     }
@@ -114,13 +119,13 @@ connection.SubscribeAsync("sim.sensors.env", (s, a) =>
                            root.TryGetProperty("CurrentSpeedKnots", out var cs2) && cs2.TryGetDouble(out var csv2) ? csv2 :
                            root.TryGetProperty("CurrentSpeed", out var cs3) && cs3.TryGetDouble(out var csv3) ? csv3 : null;
 
-        if (wind.HasValue && wind.Value > 25)
+        if (wind.HasValue && wind.Value > highWind)
         {
-            PublishAlarm("HighWind", $"Wind {wind:F1} kts > 25", AlarmSeverity.Warning);
+            PublishAlarm("HighWind", $"Wind {wind:F1} kts > {highWind}", AlarmSeverity.Warning);
         }
-        if (current.HasValue && current.Value > 4)
+        if (current.HasValue && current.Value > strongCurrent)
         {
-            PublishAlarm("StrongCurrent", $"Current {current:F1} kts > 4", AlarmSeverity.Info);
+            PublishAlarm("StrongCurrent", $"Current {current:F1} kts > {strongCurrent}", AlarmSeverity.Info);
         }
     }
     catch (Exception ex)
