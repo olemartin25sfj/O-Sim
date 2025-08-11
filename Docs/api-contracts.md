@@ -8,35 +8,20 @@ Alle meldinger er i JSON-format.
 
 ### 1.1 LogEntry
 
-- **NATS-Emne:** `log.entries`
-- **Beskrivelse:** Standard loggmelding fra enhver tjeneste for sentralisert logging.
-- **Publiseres av:** Alle mikrotjenester.
-- **Abonneres av:** `LoggerService`.
-- **Struktur:**
+- **NATS-emne:** `log.entries`
+- **Record (C#):** `LogEntry(DateTime TimestampUtc, string Service, string Level, string? Message = null, string? CorrelationId = null)`
+- **Publiseres av:** Alle mikrotjenester (ved behov)
+- **Abonneres av:** `LoggerService`
+- **JSON-eksempel:**
   ```json
   {
-    "Timestamp": "yyyy-MM-ddTHH:mm:ssZ", // ISO 8601 format (UTC)
-    "Service": "string", // Navn på tjenesten som logget (f.eks. "SimulatorService")
-    "Level": "string", // Loggnivå (f.eks. "Information", "Warning", "Error", "Debug")
-    "Message": "string", // Loggmeldingstekst
-    "Details": "object" // Valgfritt: Ekstra detaljer som et JSON-objekt
+    "timestampUtc": "2025-06-26T10:30:15Z",
+    "service": "SimulatorService",
+    "level": "Information",
+    "message": "Vessel position updated.",
+    "correlationId": "ab12cd34"
   }
   ```
-
-Eksempel:
-
-```JSON
-{
-"Timestamp": "2025-06-26T10:30:15Z",
-"Service": "SimulatorService",
-"Level": "Information",
-"Message": "Vessel position updated.",
-"Details": {
-"Lat": 59.04944,
-"Lon": 10.20333
-}
-}
-```
 
 ## 2. Sensordata (simulator-generert)
 
@@ -101,7 +86,7 @@ Tillegg (framtidig utvidelse): ROT / Roll / Pitch / Heave kan innføres i egen u
 
 ### 3.3 RudderCommand
 
-- **NATS.emne:** `sim.commands.rudder`
+- **NATS-emne:** `sim.commands.rudder`
 - **Beskrivelse:** Kommando for rorutslag til SimulatorService.
 - **Publiseres av:** `AutopilotService` (og potensielt `FrontEnd GUI` for manuell kontroll).
 - **Abonneres av:** `SimulatorService`, `LoggerService`.
@@ -111,18 +96,9 @@ Tillegg (framtidig utvidelse): ROT / Roll / Pitch / Heave kan innføres i egen u
 { "timestampUtc": "2025-06-26T10:30:26Z", "rudderAngleDegrees": 5.0 }
 ```
 
-Eksempel:
-
-```JSON
-{
-  "Timestamp": "2025-06-26T10:30:26Z",
-  "RudderAngleDegrees": 5.0
-}
-```
-
 ### 3.4 ThrustCommand
 
-- **NATS.emne:** `sim.commands.thrust`
+- **NATS-emne:** `sim.commands.thrust`
 - **Beskrivelse:** Kommando for thrust (fremdrift) til SimulatorService.
 - **Publiseres av:** `AutopilotService` (og potensielt `FrontEnd GUI` for manuell kontroll).
 - **Abonneres av:** `SimulatorService`, `LoggerService`.
@@ -132,18 +108,9 @@ Eksempel:
 { "timestampUtc": "2025-06-26T10:30:26Z", "thrustPercent": 75.0 }
 ```
 
-Eksempel:
-
-```JSON
-{
-  "Timestamp": "2025-06-26T10:30:26Z",
-  "ThrustPercentage": 75.0
-}
-```
-
 ### 3.5 SetEnvironmentModeCommand
 
-- **NATS.emne:** `env.commands.setmode`
+- **NATS-emne:** `env.commands.setmode`
 - **Beskrivelse:** Kommando for å sette en spesifikk miljømodus i `EnvirontmentService`.
 - **Publiseres av:** `Frontend GUI` (via API Gateway).
 - **Abonneres av:** `EnvironmentService`, `LoggerService`.
@@ -153,26 +120,15 @@ Eksempel:
 { "timestampUtc": "2025-06-26T10:30:27Z", "mode": "Storm" }
 ```
 
-Eksempel:
-
-```JSON
-{
-  "Timestamp": "2025-06-26T10:30:27Z",
-  "ModeName": "FullStorm"
-}
-```
-
 ## 4. Alarm- og Statusmeldinger
 
 ### 4.1 AlarmTriggered
 
 - **NATS.emne:** `alarm.triggers`
 - **Beskrivelse:** Melding som indikerer at en alarm har blitt utløst.
-- **Publiseres av:** `AlarmSerivce`
+- **Publiseres av:** `AlarmService`
 - **Abonneres av:** `LoggerService`, `Frontend GUI` (via API Gateway).
 - **Struktur:**
-
-**NATS-emne:** `alarm.triggers`
 
 **Record:** `AlarmTriggered(DateTime TimestampUtc, string AlarmType, string Message, AlarmSeverity Severity)`
 
@@ -181,10 +137,24 @@ Eksempel:
 ```json
 {
   "timestampUtc": "2025-06-26T10:31:00Z",
-  "alarmType": "OffCourseDeviation",
-  "message": "Vessel deviated significantly from target course.",
+  "alarmType": "OffCourse",
+  "message": "Heading/COG diff 18.2° > 15°",
   "severity": "Warning"
 }
 ```
 
-Utvidelser som terskelverdier / currentValue kan legges i egen melding `AlarmDetail` eller ved å endre record senere (breaking change) – anbefales som separat emne.
+Cooldown og terskler konfigureres via `AlarmOptions` i `AlarmService/appsettings.json`.
+
+### 4.2 (Planlagt) Utvidede alarmer
+
+Detaljerte payloads (terskel, målt verdi, enhet) vil evt. komme på et eget emne: `alarm.details` eller som en utvidet record.
+
+## 5. Bakoverkompatibilitet (midlertidig)
+
+For gradvis migrering til nye feltnavn (`timestampUtc`, `headingDegrees`, osv.) finnes adaptere i:
+
+- `SimulatorService` (EnvironmentData fallback parsing)
+- `LoggerService` (feltmapping ved logging)
+- `WebDashboard` (adapter i WebSocket onmessage)
+
+Plan: Fjernes etter at alle tjenester har vært deployet uten gamle felt i minst én release. Når adaptere fjernes skal dette dokumentet oppdateres og seksjonen slettes.
