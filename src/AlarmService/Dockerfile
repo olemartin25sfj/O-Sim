@@ -1,18 +1,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Kopier csproj først for lag cache
-COPY AlarmService/AlarmService.csproj AlarmService/
-COPY ../OSim.Shared.Messages/OSim.Shared.Messages.csproj OSim.Shared.Messages/
-
-RUN dotnet restore AlarmService/AlarmService.csproj
-
-# Kopier resten av koden
+# Kopier hele kildekoden (bin/obj blir filtrert bort av .dockerignore)
 COPY . .
 
-RUN dotnet publish AlarmService/AlarmService.csproj -c Release -o /app/publish --no-restore
+# Publisering (restore kjøres automatisk som del av publish fordi vi ikke bruker --no-restore)
+RUN dotnet publish AlarmService/AlarmService.csproj -c Release -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/runtime:8.0
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 ENV DOTNET_EnableDiagnostics=0
