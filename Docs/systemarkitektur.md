@@ -49,6 +49,8 @@ O-Sim består av løst koblede komponenter som sammen gir simulerings- og kontro
 
 ![Systemarkitektur](Systemarkitektur_O-Sim.svg)
 
+Oppdatert status (per nå): Back-end kjører på .NET 8 (tidligere referanser til .NET 9 i dokumentasjon er korrigert). Frontend implementeres som et web dashboard (React + Vite + TypeScript + MUI + Leaflet) i stedet for opprinnelig planlagt WPF / Next.js.
+
 ---
 
 ### 3.1 NATS
@@ -217,26 +219,24 @@ Hver tjeneste har et tydelig ansvar og kommuniserer via NATS.
 
 ---
 
-### 3.4 Frontend GUI
+### 3.4 Frontend (WebDashboard)
 
-**Rolle:**
+**Rolle:** Brukergrensesnitt for kontroll og visualisering.
 
-- Brukergrensesnitt for kontroll og visualisering
-
-**Implementasjon:**
-
-- WPF først, deretter Next.js
+**Implementasjon:** React 18 + Vite + TypeScript + MUI + Leaflet (erstatter opprinnelig WPF/Next.js plan). WPF mappe er foreløpig ikke i bruk.
 
 **Kommunikasjon:**
 
-- Via API Gateway (REST + WebSocket)
+- WebSocket (via GatewayProxyService) for sanntidsstrømmer (`sim.sensors.nav`, `sim.sensors.env`, `alarm.triggers`).
+- HTTP (Traefik-rutede /api/\* endepunkter) for kommandoer og status.
 
 **Funksjoner:**
 
-- Visning av sanntidsdata
-- Kartvisning
-- Input for kurs/fart
-- Alarmvisning
+- Kart med posisjon / heading.
+- Kurs / fart kontroll (HTTP POST mot simulator/autopilot proxy-endepunkt).
+- Miljøpanel og alarmvisning.
+
+**Planlagte utvidelser:** Ruteplanlegging, start/destinasjon-kommandoer, historikk / replay.
 
 ---
 
@@ -244,10 +244,10 @@ Hver tjeneste har et tydelig ansvar og kommuniserer via NATS.
 
 ### 4.1 Teknologistack
 
-- **Backend**: C# (.NET 9)
-- **Frontend**: WPF (desktop), Next.js (web)
-- **Kommunikasjon**: NATS
-- **Gateway**: Traefik
+- **Backend**: C# (.NET 8)
+- **Frontend**: React (Vite) WebDashboard (WPF plan utsatt)
+- **Kommunikasjon**: NATS (publish/subscribe)
+- **Gateway**: Traefik (HTTP) + GatewayProxyService (WebSocket/NATS bridge)
 - **Containere**: Docker Compose
 
 ### 4.2 Kommunikasjonskontrakter
@@ -263,8 +263,9 @@ Hver tjeneste har et tydelig ansvar og kommuniserer via NATS.
 
 ### 4.4 Observabilitet
 
-- **Logging**: Standard .NET-logging → `log.entries`
-- **Health checks**: HTTP-endepunkt (`/health`) for hver tjeneste
-- **Bruk i Traefik/Docker Compose**: Overvåk og restart ved behov
+- **Logging**: Standard .NET-logging → `log.entries` (konsumeres av LoggerService, skrives til CSV)
+- **Status endpoints**: `/api/<tjeneste>/status` (ikke `/health` per nå). Eksempel: `/api/simulator/status`, `/api/alarm/status`.
+- **Alarmer**: `AlarmService` publiserer `alarm.triggers` og eksponerer aktive via `/api/alarm/active`.
+- **Fremtid**: Legge til strukturerte logger + OpenTelemetry / metrics dersom ønskelig.
 
 ---

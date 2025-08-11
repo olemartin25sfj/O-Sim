@@ -29,7 +29,9 @@ Systemet består av følgende hovedkomponenter:
 | SimulatorService   | 5001        | `/api/simulator/*`   |
 | EnvironmentService | 5002        | `/api/environment/*` |
 | LoggerService      | 5003        | `/api/logs/*`        |
+| AlarmService       | 5004        | `/api/alarm/*`       |
 | GatewayProxy       | 5000        | `/ws/*`              |
+| WebDashboard       | 3000        | `/`                  |
 | NATS               | 4222, 8222  | -                    |
 | Traefik            | 80, 8080    | -                    |
 
@@ -40,7 +42,9 @@ Alle API-endepunkter er tilgjengelige via Traefik på port 80. Tilgjengelige end
 - `GET /api/simulator/status` - Status for simulatoren
 - `GET /api/environment/status` - Status for miljøtjenesten
 - `GET /api/logs/status` - Status for loggetjenesten
-- `WS /ws/nav` - WebSocket for navigasjonsdata
+- `GET /api/alarm/status` - Status for AlarmService
+- `GET /api/alarm/active` - Aktive alarmer
+- `WS /ws/nav` - WebSocket (nav-/env-/alarm-meldinger via samme endpoint)
 
 ## Oppsett og Kjøring
 
@@ -98,10 +102,11 @@ Etter at systemet er startet kan du verifisere at alt fungerer:
 
 ### Teknologier
 
-- .NET 8.0 for alle tjenester
+- .NET 8.0 for backend-tjenester
+- React + Vite WebDashboard (erstatter initial WPF plan)
 - NATS for meldingsutveksling
-- Traefik for API-gateway
-- Docker og Docker Compose for containerisering
+- Traefik for HTTP routing + GatewayProxy for WebSocket
+- Docker Compose for orkestrering
 
 ### Lokal Utvikling
 

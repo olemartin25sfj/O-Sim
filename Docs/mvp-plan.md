@@ -62,19 +62,19 @@ Utviklingen av MVP-en vil følge en trinnvis tilnærming, der hvert trinn bygger
   - Kjør alle tjenester i Docker Compose.
   - Bekreft at miljødata publiseres fra `EnvironmentService` og at alle relevante data, inkludert systemlogger, persisteres korrekt av `LoggerService`.
 
-### Trinn 3: Frontend GUI (WPF) og API Gateway
+### Trinn 3: Frontend GUI (WebDashboard) og API Gateway
 
 **Mål:** Etablere brukergrensesnittet og tilkoblingen til backend-tjenestene for sanntids visualisering.
 
 - **API Gateway (Traefik) Konfigurasjon:**
   - Legge til Traefik-tjenesten i `docker-compose.yml` og konfigurere den som systemets API Gateway.
   - Konfigurere Traefik til å rute innkommende HTTP-forespørsler (f.eks. for kommandoer) og WebSocket-tilkoblinger (for sanntidsdata) til de korresponderende backend-tjenestene. Dette kan kreve en lettvekts-proxy-tjeneste i C# for å håndtere WebSocket-abonnementer fra NATS til Frontend.
-- **Frontend GUI (WPF) Implementasjon:**
-  - Opprette et nytt WPF-applikasjonsprosjekt.
-  - Implementere en grunnleggende kartvisning. Dette kan involvere bruk av OpenStreetMap-fliser eller en forenklet grafisk representasjon av et sjøområde.
-  - Integrere en WebSocket-klient for å abonnere på sanntids `NavigationData` og `EnvironmentData` via API Gateway.
-  - Visualisere fartøyets posisjon, kurs og andre relevante data på kartet.
-  - Inkludere enkle tekstfelter eller paneler for å vise numeriske verdier for fart, kurs, vind, strøm og bølger.
+    -- **Frontend GUI (WebDashboard) Implementasjon (Oppdatert):**
+  - React + Vite + TypeScript + MUI + Leaflet.
+  - WebSocket-klient via GatewayProxy for `sim.sensors.nav`, `sim.sensors.env`, `alarm.triggers`.
+  - Kart med fartøyikon, paneler for navigasjon, miljø og alarmer.
+  - Kurs / fart kontroll via HTTP POST.
+  - (WPF utsatt / ikke prioritert i MVP.)
 - **Verifisering:**
   - Kjør hele systemet via Docker Compose.
   - Bekreft at WPF-applikasjonen starter og mottar sanntidsdata fra backend, og at fartøyets posisjon og data oppdateres korrekt på kartet.
@@ -110,9 +110,9 @@ Utviklingen av MVP-en vil følge en trinnvis tilnærming, der hvert trinn bygger
   - Publisere `AlarmTriggered` meldinger (til NATS-emnet `alarm.triggers`) når en alarmregel brytes.
 - **`LoggerService` Utvidelse:**
   - Konfigurere `LoggerService` til å abonnere på `alarm.triggers` for å persistere alle utløste alarmer.
-- **Frontend GUI (WPF) Utvidelse:**
-  - Utvide WPF-applikasjonen til å abonnere på `alarm.triggers` via WebSocket fra API Gateway.
-  - Implementere en enkel visuell representasjon av utløste alarmer, f.eks. en liste over aktive alarmer eller et popup-varsel.
+    -- **Frontend (WebDashboard) Utvidelse:**
+  - Abonnere på `alarm.triggers` via WebSocket.
+  - Vise aktive alarmer (liste / fargekodet).
 - **Verifisering:**
   - Kjør hele systemet.
   - Fremprovoser en alarm (f.eks., ved å manuelt overstyre hastigheten til over en definert grense), og bekreft at alarmen detekteres av `AlarmService`, logges av `LoggerService`, og vises i Frontend GUI.
