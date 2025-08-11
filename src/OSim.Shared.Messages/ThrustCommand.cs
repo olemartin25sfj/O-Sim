@@ -1,9 +1,6 @@
-using System;
-
 namespace OSim.Shared.Messages;
 
-public class ThrustCommand
-{
-    public DateTime Timestamp { get; set; }
-    public double Thrust { get; set; }
-}
+public sealed record ThrustCommand(
+    DateTime TimestampUtc,
+    double ThrustPercent
+);

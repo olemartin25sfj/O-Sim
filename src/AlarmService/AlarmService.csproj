@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OSim.Shared.Messages\OSim.Shared.Messages.csproj" />
+    <PackageReference Include="NATS.Client" Version="1.1.0" />
+  </ItemGroup>
+</Project>

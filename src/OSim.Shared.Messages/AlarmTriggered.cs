@@ -1,11 +1,15 @@
-using System;
-
 namespace OSim.Shared.Messages;
 
-public class AlarmTriggered
+public enum AlarmSeverity
 {
-    public DateTime Timestamp { get; set; }
-    public string AlarmType { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-    public string Severity { get; set; } = "Warning"; // Default to Warning, can be changed to Critical or Info
+    Info = 0,
+    Warning = 1,
+    Critical = 2
 }
+
+public sealed record AlarmTriggered(
+    DateTime TimestampUtc,
+    string AlarmType,
+    string Message,
+    AlarmSeverity Severity
+);

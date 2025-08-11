@@ -35,15 +35,49 @@ function App() {
       const message: WebSocketMessage<any> = JSON.parse(event.data);
 
       switch (message.topic) {
-        case "sim.sensors.nav":
-          setNavigation(message.data);
+        case "sim.sensors.nav": {
+          const d = message.data;
+          // Adapter: støtt både gamle og nye feltnavn
+          const nav: NavigationData = {
+            timestampUtc: d.timestampUtc || d.timestamp,
+            latitude: d.latitude,
+            longitude: d.longitude,
+            headingDegrees: d.headingDegrees ?? d.heading,
+            speedKnots: d.speedKnots ?? d.speed,
+            courseOverGroundDegrees:
+              d.courseOverGroundDegrees ?? d.courseOverGround,
+          };
+          setNavigation(nav);
           break;
-        case "sim.sensors.env":
-          setEnvironment(message.data);
+        }
+        case "sim.sensors.env": {
+          const d = message.data;
+          const env: EnvironmentData = {
+            timestampUtc: d.timestampUtc || d.timestamp,
+            mode: d.mode || "Dynamic",
+            windSpeedKnots: d.windSpeedKnots,
+            windDirectionDegrees: d.windDirectionDegrees ?? d.windDirection,
+            currentSpeedKnots: d.currentSpeedKnots ?? d.currentSpeed,
+            currentDirectionDegrees:
+              d.currentDirectionDegrees ?? d.currentDirection,
+            waveHeightMeters: d.waveHeightMeters ?? d.waveHeight,
+            waveDirectionDegrees: d.waveDirectionDegrees ?? d.waveDirection,
+            wavePeriodSeconds: d.wavePeriodSeconds ?? d.wavePeriod,
+          };
+          setEnvironment(env);
           break;
-        case "alarm.triggers":
-          setAlarms((prev) => [...prev, message.data]);
+        }
+        case "alarm.triggers": {
+          const d = message.data;
+          const alarm: AlarmData = {
+            timestampUtc: d.timestampUtc || d.timestamp,
+            alarmType: d.alarmType || d.type,
+            message: d.message,
+            severity: d.severity,
+          };
+          setAlarms((prev) => [...prev, alarm]);
           break;
+        }
       }
     };
 
@@ -119,8 +153,8 @@ function App() {
                   onSetCourse={handleSetCourse}
                   onSetSpeed={handleSetSpeed}
                   onSetPosition={handleSetPosition}
-                  currentCourse={navigation?.heading}
-                  currentSpeed={navigation?.speed}
+                  currentCourse={navigation?.headingDegrees}
+                  currentSpeed={navigation?.speedKnots}
                 />
               </Grid>
               <Grid item xs={12}>

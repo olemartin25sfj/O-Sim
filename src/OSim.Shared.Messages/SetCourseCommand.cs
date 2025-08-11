@@ -1,9 +1,6 @@
-using System;
-
 namespace OSim.Shared.Messages;
 
-public class SetCourseCommand
-{
-    public DateTime Timestamp { get; set; }
-    public double TargetCourseDegrees { get; set; }
-}
+public sealed record SetCourseCommand(
+    DateTime TimestampUtc,
+    double TargetCourseDegrees
+);

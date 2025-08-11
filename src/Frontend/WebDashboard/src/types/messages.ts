@@ -1,28 +1,30 @@
+// Synkronisert med OSim.Shared.Messages records
 export interface NavigationData {
-  timestamp: string;
+  timestampUtc: string; // ISO-8601
   latitude: number;
   longitude: number;
-  heading: number;
-  speed: number;
-  courseOverGround: number;
+  headingDegrees: number;
+  speedKnots: number;
+  courseOverGroundDegrees: number;
 }
 
 export interface EnvironmentData {
-  timestamp: string;
+  timestampUtc: string;
+  mode: "Static" | "Dynamic";
   windSpeedKnots: number;
-  windDirection: number;
-  currentSpeed: number;
-  currentDirection: number;
-  waveHeight: number;
-  waveDirection: number;
-  wavePeriod: number;
+  windDirectionDegrees: number;
+  currentSpeedKnots: number;
+  currentDirectionDegrees: number;
+  waveHeightMeters: number;
+  waveDirectionDegrees: number;
+  wavePeriodSeconds: number;
 }
 
 export interface AlarmData {
-  timestamp: string;
-  type: string;
+  timestampUtc: string;
+  alarmType: string;
   message: string;
-  severity: "info" | "warning" | "critical";
+  severity: "Info" | "Warning" | "Critical";
 }
 
 export interface WebSocketMessage<T> {

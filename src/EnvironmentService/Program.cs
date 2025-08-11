@@ -55,17 +55,17 @@ class Program
 
             while (true)
             {
-                var env = new EnvironmentData
-                {
-                    Timestamp = DateTime.UtcNow,
-                    WindSpeedKnots = 5 + rand.NextDouble() * 10,
-                    WindDirection = rand.Next(0, 360),
-                    CurrentSpeed = 1 + rand.NextDouble() * 2,
-                    CurrentDirection = rand.Next(0, 360),
-                    WaveHeight = rand.NextDouble() * 2,
-                    WaveDirection = rand.Next(0, 360),
-                    WavePeriod = 3 + rand.NextDouble() * 5
-                };
+                var env = new EnvironmentData(
+                    TimestampUtc: DateTime.UtcNow,
+                    Mode: EnvironmentMode.Dynamic,
+                    WindSpeedKnots: 5 + rand.NextDouble() * 10,
+                    WindDirectionDegrees: rand.Next(0, 360),
+                    CurrentSpeedKnots: 1 + rand.NextDouble() * 2,
+                    CurrentDirectionDegrees: rand.Next(0, 360),
+                    WaveHeightMeters: rand.NextDouble() * 2,
+                    WaveDirectionDegrees: rand.Next(0, 360),
+                    WavePeriodSeconds: 3 + rand.NextDouble() * 5
+                );
 
                 var json = JsonSerializer.Serialize(env);
                 connection.Publish("sim.sensors.env", System.Text.Encoding.UTF8.GetBytes(json));

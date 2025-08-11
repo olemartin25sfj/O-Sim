@@ -21,22 +21,22 @@ export const EnvironmentPanel: React.FC<EnvironmentPanelProps> = ({
           <Typography variant="subtitle2">Wind</Typography>
           <Typography>
             {environment.windSpeedKnots.toFixed(1)} kts @{" "}
-            {environment.windDirection.toFixed(0)}°
+            {environment.windDirectionDegrees.toFixed(0)}°
           </Typography>
         </Grid>
         <Grid item xs={6}>
           <Typography variant="subtitle2">Current</Typography>
           <Typography>
-            {environment.currentSpeed.toFixed(1)} kts @{" "}
-            {environment.currentDirection.toFixed(0)}°
+            {environment.currentSpeedKnots.toFixed(1)} kts @{" "}
+            {environment.currentDirectionDegrees.toFixed(0)}°
           </Typography>
         </Grid>
         <Grid item xs={12}>
           <Typography variant="subtitle2">Waves</Typography>
           <Typography>
-            Height: {environment.waveHeight.toFixed(1)}m | Direction:{" "}
-            {environment.waveDirection.toFixed(0)}° | Period:{" "}
-            {environment.wavePeriod.toFixed(1)}s
+            Height: {environment.waveHeightMeters.toFixed(1)}m | Direction:{" "}
+            {environment.waveDirectionDegrees.toFixed(0)}° | Period:{" "}
+            {environment.wavePeriodSeconds.toFixed(1)}s
           </Typography>
         </Grid>
       </Grid>

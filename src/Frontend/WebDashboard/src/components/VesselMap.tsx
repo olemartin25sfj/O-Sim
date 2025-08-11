@@ -94,7 +94,7 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
           {navigation && (
             <Marker
               position={position}
-              icon={createShipIcon(navigation.heading)}
+              icon={createShipIcon(navigation.headingDegrees)}
             >
               <Popup>
                 <div>
@@ -104,8 +104,8 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
                   <br />
                   Longitude: {navigation.longitude.toFixed(6)}
                   <br />
-                  Heading: {navigation.heading.toFixed(1)}°<br />
-                  Speed: {navigation.speed.toFixed(1)} knots
+                  Heading: {navigation.headingDegrees.toFixed(1)}°<br />
+                  Speed: {navigation.speedKnots.toFixed(1)} knots
                 </div>
               </Popup>
             </Marker>

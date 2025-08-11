@@ -66,42 +66,69 @@ namespace SimulatorService
             using (natsConnection)
             {
                 var envSubscription = natsConnection.SubscribeAsync("sim.sensors.env", (sender, args) =>
-            {
-                try
                 {
-                    var json = System.Text.Encoding.UTF8.GetString(args.Message.Data);
-                    var env = JsonSerializer.Deserialize<EnvironmentData>(json);
-                    if (env != null)
+                    try
                     {
-                        _engine.SetEnvironment(
-                            windSpeed: env.WindSpeedKnots,
-                            windDirection: env.WindDirection,
-                            currentSpeed: env.CurrentSpeed,
-                            currentDirection: env.CurrentDirection
-                        );
-                        _logger.LogInformation($"Mottok miljødata: {json}");
+                        var json = System.Text.Encoding.UTF8.GetString(args.Message.Data);
+
+                        // Prøv ny struktur først
+                        EnvironmentData? env = null;
+                        try
+                        {
+                            env = JsonSerializer.Deserialize<EnvironmentData>(json);
+                        }
+                        catch
+                        {
+                            // fallback: forsøk å lese gammel struktur og mappe
+                            using var doc = JsonDocument.Parse(json);
+                            var root = doc.RootElement;
+                            if (root.TryGetProperty("WindSpeedKnots", out _))
+                            {
+                                env = new EnvironmentData(
+                                    TimestampUtc: root.GetProperty("Timestamp").GetDateTime(),
+                                    Mode: EnvironmentMode.Dynamic,
+                                    WindSpeedKnots: root.GetProperty("WindSpeedKnots").GetDouble(),
+                                    WindDirectionDegrees: root.GetProperty("WindDirection").GetDouble(),
+                                    CurrentSpeedKnots: root.GetProperty("CurrentSpeed").GetDouble(),
+                                    CurrentDirectionDegrees: root.GetProperty("CurrentDirection").GetDouble(),
+                                    WaveHeightMeters: root.GetProperty("WaveHeight").GetDouble(),
+                                    WaveDirectionDegrees: root.GetProperty("WaveDirection").GetDouble(),
+                                    WavePeriodSeconds: root.GetProperty("WavePeriod").GetDouble()
+                                );
+                            }
+                        }
+
+                        if (env != null)
+                        {
+                            _engine.SetEnvironment(
+                                windSpeed: env.WindSpeedKnots,
+                                windDirection: env.WindDirectionDegrees,
+                                currentSpeed: env.CurrentSpeedKnots,
+                                currentDirection: env.CurrentDirectionDegrees
+                            );
+                            _logger.LogInformation($"Mottok miljødata: {json}");
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError($"Feil ved behandling av miljødata: {ex.Message}");
-                }
-            });
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Feil ved behandling av miljødata: {ex.Message}");
+                    }
+                });
 
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     _autopilot.Update();
                     _engine.Update(_tickInterval);
 
-                    // Publish navigation data to NATS
-                    var navigationData = new NavigationData
-                    {
-                        Latitude = _engine.Latitude,
-                        Longitude = _engine.Longitude,
-                        Heading = _engine.Heading,
-                        SpeedKnots = _engine.Speed,
-                        Timestamp = DateTime.UtcNow
-                    };
+                    // Publish navigation data to NATS (bruk ny record-konstruktør)
+                    var navigationData = new NavigationData(
+                        TimestampUtc: DateTime.UtcNow,
+                        Latitude: _engine.Latitude,
+                        Longitude: _engine.Longitude,
+                        SpeedKnots: _engine.Speed,
+                        HeadingDegrees: _engine.Heading,
+                        CourseOverGroundDegrees: _engine.Heading // placeholder dersom COG ikke beregnes separat
+                    );
 
                     var json = JsonSerializer.Serialize(navigationData);
                     natsConnection.Publish("sim.sensors.nav", System.Text.Encoding.UTF8.GetBytes(json));
