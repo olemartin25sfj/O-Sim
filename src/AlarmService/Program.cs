@@ -13,6 +13,12 @@ using OSim.Shared.Messages;
 var lastAlarm = new Dictionary<string, DateTime>();
 TimeSpan alarmCooldown = TimeSpan.FromSeconds(30);
 
+// Start minimal web server for status
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+app.MapGet("/api/alarm/status", () => Results.Ok(new { Service = "AlarmService", Status = "Running", TimestampUtc = DateTime.UtcNow }));
+_ = app.RunAsync("http://0.0.0.0:5004");
+
 IConnection? connection = null;
 var retries = 10;
 for (int i = 0; i < retries; i++)

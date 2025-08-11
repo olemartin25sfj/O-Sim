@@ -34,6 +34,17 @@ services:
       - "traefik.http.routers.logger.rule=PathPrefix(`/api/logs`)"
       - "traefik.http.services.logger.loadbalancer.server.port=5003"
 
+  alarmservice:
+    build:
+      context: ./src
+      dockerfile: AlarmService/Dockerfile
+    depends_on:
+      - nats
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.alarm.rule=PathPrefix(`/api/alarms`)"
+      - "traefik.http.services.alarm.loadbalancer.server.port=5004"
+
   autopilotservice:
     labels:
       - "traefik.enable=true"
