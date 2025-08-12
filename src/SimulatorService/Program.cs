@@ -25,6 +25,15 @@ builder.Services.AddSingleton<IConnection>(_ =>
 // Add Worker with SimulatorEngine
 builder.Services.AddHostedService<Worker>();
 
+// CORS for frontend (localhost:3000 via Traefik/nginx) – dev only allow all
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("dev", p => p
+        .AllowAnyOrigin()
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
+
 // Felles JSON options – gjør navn case-insensitive slik at frontendens camelCase (targetSpeedKnots) matches TargetSpeedKnots
 var jsonOptions = new JsonSerializerOptions
 {
@@ -32,6 +41,13 @@ var jsonOptions = new JsonSerializerOptions
 };
 
 var app = builder.Build();
+
+// Enable CORS before endpoints so preflight (OPTIONS) ikke gir 405
+app.UseCors("dev");
+
+// Fallback OPTIONS (catch‑all under /api/simulator/*) for clients som sender preflight
+app.MapMethods("/api/simulator/{*any}", new[] { "OPTIONS" }, () => Results.Ok())
+    .WithName("SimulatorPreflight");
 
 app.MapGet("/api/simulator/status", () =>
 {
