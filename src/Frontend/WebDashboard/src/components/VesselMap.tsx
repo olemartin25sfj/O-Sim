@@ -116,6 +116,15 @@ export const VesselMap = ({
   const [activeGenerated, setActiveGenerated] = useState<
     [number, number][] | null
   >(null);
+  // Enkel interaktiv rute (brukerens manuelle veipunkter: start + mid + end)
+  const [editableRoutePoints, setEditableRoutePoints] = useState<
+    [number, number][] | null
+  >(null);
+  // Indeks til midlertidig veipunkt som dras inn (null når inaktiv)
+  const [addingIdx, setAddingIdx] = useState<number | null>(null);
+  const [smoothedRoute, setSmoothedRoute] = useState<[number, number][] | null>(
+    null
+  );
   // Removed predefined catalog routes
   // Panel visibility
   const [showRoutesPanel, setShowRoutesPanel] = useState(true);
@@ -199,10 +208,178 @@ export const VesselMap = ({
   // Eksponer aktiv (valgt) rute til parent for journey-start
   useEffect(() => {
     if (onActiveRouteChange) {
+      if (editableRoutePoints) {
+        onActiveRouteChange(editableRoutePoints);
+        return;
+      }
       const r = routes.find((r) => r.id === selectedRouteId);
       onActiveRouteChange(r ? r.points : null);
     }
-  }, [selectedRouteId, routes, onActiveRouteChange]);
+  }, [selectedRouteId, routes, onActiveRouteChange, editableRoutePoints]);
+
+  // Sett opp enkel rute når bruker har valgt start og slutt (fra props) og ingen eksisterende redigering
+  useEffect(() => {
+    if (!editableRoutePoints && selectedStart && selectedEnd) {
+      setEditableRoutePoints([selectedStart, selectedEnd]);
+      // Slå av evt generert great-circle for å ikke forvirre
+      setActiveGenerated(null);
+    }
+    // Hvis endepunkt fjernes, reset
+    if (editableRoutePoints && (!selectedStart || !selectedEnd)) {
+      setEditableRoutePoints(null);
+    }
+  }, [selectedStart, selectedEnd]);
+
+  // Catmull-Rom smoothing (planar approx). Returnerer tett samplet kurve.
+  function smoothRoute(points: [number, number][], spacingMeters = 120) {
+    if (points.length < 3) return points;
+    const res: [number, number][] = [];
+    const dup = (i: number) =>
+      points[Math.min(points.length - 1, Math.max(0, i))];
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const distMeters = (a: [number, number], b: [number, number]) => {
+      const R = 6371000;
+      const dLat = toRad(b[0] - a[0]);
+      const dLon = toRad(b[1] - a[1]);
+      const lat1 = toRad(a[0]);
+      const lat2 = toRad(b[0]);
+      const h =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    };
+    const catmull = (
+      p0: [number, number],
+      p1: [number, number],
+      p2: [number, number],
+      p3: [number, number],
+      t: number
+    ): [number, number] => {
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const x =
+        0.5 *
+        (2 * p1[1] +
+          (-p0[1] + p2[1]) * t +
+          (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
+          (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+      const y =
+        0.5 *
+        (2 * p1[0] +
+          (-p0[0] + p2[0]) * t +
+          (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
+          (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+      return [y, x];
+    };
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = dup(i - 1);
+      const p1 = dup(i);
+      const p2 = dup(i + 1);
+      const p3 = dup(i + 2);
+      const segLen = distMeters(p1, p2);
+      const steps = Math.max(2, Math.round(segLen / spacingMeters));
+      for (let s = 0; s < steps; s++) {
+        const t = s / steps;
+        const c = catmull(p0, p1, p2, p3, t);
+        if (res.length === 0 || distMeters(res[res.length - 1], c) > 5) {
+          res.push(c);
+        }
+      }
+    }
+    // ensure last point
+    const last = points[points.length - 1];
+    if (
+      !res.length ||
+      res[res.length - 1][0] !== last[0] ||
+      res[res.length - 1][1] !== last[1]
+    )
+      res.push(last);
+    return res;
+  }
+
+  // Re-smooth når bruker endrer veipunkter
+  useEffect(() => {
+    if (editableRoutePoints && editableRoutePoints.length >= 2) {
+      setSmoothedRoute(smoothRoute(editableRoutePoints));
+    } else {
+      setSmoothedRoute(null);
+    }
+  }, [editableRoutePoints]);
+
+  // Hjelp: legg inn nytt veipunkt nærmest segment
+  // insertWaypointAt ble erstattet av beginInsertDrag
+
+  // Start innsetting + dragging: returnerer indeks for ny node
+  const beginInsertDrag = (lat: number, lon: number) => {
+    if (!editableRoutePoints || editableRoutePoints.length < 2) return;
+    // Bruk samme algoritme men hold på indeksen vi satte inn
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < editableRoutePoints.length - 1; i++) {
+      const d = distancePointToSegment(
+        lat,
+        lon,
+        editableRoutePoints[i],
+        editableRoutePoints[i + 1]
+      );
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    setEditableRoutePoints((pts) => {
+      if (!pts) return pts;
+      const newPts = [...pts];
+      newPts.splice(bestIdx + 1, 0, [lat, lon]);
+      // Sett addingIdx etter at vi faktisk har lagt inn
+      setAddingIdx(bestIdx + 1);
+      return newPts;
+    });
+  };
+
+  // Avstand punkt->segment (grovt, grader skalert med cos mid-lat for lon)
+  function distancePointToSegment(
+    lat: number,
+    lon: number,
+    a: [number, number],
+    b: [number, number]
+  ) {
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const latScale = 111320; // meter per grad lat
+    const midLat = toRad((a[0] + b[0]) / 2);
+    const lonScale = 111320 * Math.cos(midLat);
+    const ax = (b[1] - a[1]) * lonScale;
+    const ay = (b[0] - a[0]) * latScale;
+    const px = (lon - a[1]) * lonScale;
+    const py = (lat - a[0]) * latScale;
+    const segLen2 = ax * ax + ay * ay || 1;
+    let t = (px * ax + py * ay) / segLen2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax * t;
+    const cy = ay * t;
+    const dx = px - cx;
+    const dy = py - cy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // Oppdater waypoint ved dragging
+  const updateWaypoint = (index: number, lat: number, lon: number) => {
+    setEditableRoutePoints((pts) => {
+      if (!pts) return pts;
+      const next = [...pts];
+      next[index] = [lat, lon];
+      return next;
+    });
+  };
+
+  const removeWaypoint = (index: number) => {
+    setEditableRoutePoints((pts) => {
+      if (!pts) return pts;
+      if (index === 0 || index === pts.length - 1) return pts; // ikke slett endepunkt
+      const next = pts.filter((_, i) => i !== index);
+      return next;
+    });
+  };
 
   // Persist start/end & generated route
   useEffect(() => {
@@ -479,6 +656,73 @@ export const VesselMap = ({
               color="#ff9800"
               weight={4}
               opacity={0.9}
+            />
+          )}
+          {/* Interaktiv redigerbar rute (vises når start+slutt valgt) */}
+          {editableRoutePoints && editableRoutePoints.length >= 2 && (
+            <Polyline
+              positions={editableRoutePoints}
+              color="#00bcd4"
+              weight={5}
+              dashArray="2 10"
+              opacity={0.85}
+              eventHandlers={{
+                mousedown: (e) => {
+                  // Start drag-innsetting (ikke hvis allerede legger til)
+                  if (addingIdx !== null) return;
+                  beginInsertDrag(e.latlng.lat, e.latlng.lng);
+                  // Forsøk å deaktivere kart-pan midlertidig
+                  try {
+                    // @ts-ignore intern leaflet ref
+                    e.target._map.dragging.disable();
+                  } catch {}
+                },
+              }}
+            />
+          )}
+          {smoothedRoute && smoothedRoute.length > 1 && (
+            <Polyline
+              positions={smoothedRoute}
+              color="#4caf50"
+              weight={4}
+              opacity={0.9}
+            />
+          )}
+          {editableRoutePoints &&
+            editableRoutePoints.map((pt, idx) => (
+              <Marker
+                key={`editwp-${idx}`}
+                position={pt}
+                draggable={idx !== 0 && idx !== editableRoutePoints.length - 1}
+                eventHandlers={{
+                  dragend: (e) => {
+                    const ll = e.target.getLatLng();
+                    updateWaypoint(idx, ll.lat, ll.lng);
+                  },
+                  contextmenu: () => removeWaypoint(idx),
+                  click: (e) => {
+                    e.originalEvent.preventDefault();
+                    e.originalEvent.stopPropagation();
+                  },
+                }}
+                icon={divIcon({
+                  className: "edit-waypoint",
+                  html: `<div style="background:${
+                    idx === 0
+                      ? "#1b5e20"
+                      : idx === editableRoutePoints.length - 1
+                      ? "#b71c1c"
+                      : "#00bcd4"
+                  };width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,0.6);"></div>`,
+                })}
+              />
+            ))}
+          {/* Handler for mus-bevegelser når vi legger inn nytt veipunkt via drag */}
+          {addingIdx !== null && (
+            <DragInsertHandler
+              addingIdx={addingIdx}
+              stopDragging={() => setAddingIdx(null)}
+              updateWaypoint={updateWaypoint}
             />
           )}
           {/* Preview removed */}
@@ -813,3 +1057,32 @@ export const VesselMap = ({
     </Paper>
   );
 };
+
+// Hjelpekomponent: overvåker musbevegelse for nytt veipunkt
+function DragInsertHandler({
+  addingIdx,
+  stopDragging,
+  updateWaypoint,
+}: {
+  addingIdx: number;
+  stopDragging: () => void;
+  updateWaypoint: (idx: number, lat: number, lon: number) => void;
+}) {
+  useMapEvent("mousemove", (e) => {
+    updateWaypoint(addingIdx, e.latlng.lat, e.latlng.lng);
+  });
+  useMapEvent("mouseup", (e) => {
+    updateWaypoint(addingIdx, e.latlng.lat, e.latlng.lng);
+    // Re‑aktiver dragging på kartet
+    try {
+      // @ts-ignore
+      e.target.dragging.enable();
+    } catch {}
+    stopDragging();
+  });
+  useMapEvent("mouseout", () => {
+    // Avslutt hvis musepekeren forlater kartet
+    stopDragging();
+  });
+  return null;
+}

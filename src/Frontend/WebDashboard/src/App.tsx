@@ -265,7 +265,9 @@ function App() {
         payload.startLongitude = startPoint[1];
       }
       if (activeRoutePoints && activeRoutePoints.length > 0) {
-        payload.routeWaypoints = activeRoutePoints.map((p) => ({
+        // Smooth & sample rute for jevn styring
+        const smoothed = smoothAndSample(activeRoutePoints);
+        payload.routeWaypoints = smoothed.map((p) => ({
           latitude: p[0],
           longitude: p[1],
         }));
@@ -373,4 +375,69 @@ function App() {
   );
 }
 
+// Catmull-Rom smoothing + sampling (kopi av strategi i VesselMap, isolert)
+function smoothAndSample(points: [number, number][], spacingMeters = 120) {
+  if (points.length < 3) return points;
+  const res: [number, number][] = [];
+  const dup = (i: number) =>
+    points[Math.min(points.length - 1, Math.max(0, i))];
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const distMeters = (a: [number, number], b: [number, number]) => {
+    const R = 6371000;
+    const dLat = toRad(b[0] - a[0]);
+    const dLon = toRad(b[1] - a[1]);
+    const lat1 = toRad(a[0]);
+    const lat2 = toRad(b[0]);
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  };
+  const catmull = (
+    p0: [number, number],
+    p1: [number, number],
+    p2: [number, number],
+    p3: [number, number],
+    t: number
+  ): [number, number] => {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const x =
+      0.5 *
+      (2 * p1[1] +
+        (-p0[1] + p2[1]) * t +
+        (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
+        (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+    const y =
+      0.5 *
+      (2 * p1[0] +
+        (-p0[0] + p2[0]) * t +
+        (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
+        (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+    return [y, x];
+  };
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = dup(i - 1);
+    const p1 = dup(i);
+    const p2 = dup(i + 1);
+    const p3 = dup(i + 2);
+    const segLen = distMeters(p1, p2);
+    const steps = Math.max(2, Math.round(segLen / spacingMeters));
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps;
+      const c = catmull(p0, p1, p2, p3, t);
+      if (res.length === 0 || distMeters(res[res.length - 1], c) > 15) {
+        res.push(c);
+      }
+    }
+  }
+  const last = points[points.length - 1];
+  if (
+    !res.length ||
+    res[res.length - 1][0] !== last[0] ||
+    res[res.length - 1][1] !== last[1]
+  )
+    res.push(last);
+  return res;
+}
 export default App;
