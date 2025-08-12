@@ -1,10 +1,15 @@
 import React from "react";
 import { Paper, Box, Typography, Button, Stack } from "@mui/material";
-import { NavigationData, DestinationStatus } from "../types/messages";
+import {
+  NavigationData,
+  DestinationStatus,
+  EnvironmentData,
+} from "../types/messages";
 
 interface SimplifiedPanelProps {
   navigation: NavigationData | null;
   destination: DestinationStatus | null;
+  environment?: EnvironmentData | null;
   onStart: () => void; // start journey with fixed speed
   onStop: () => void; // manual stop
   running: boolean;
@@ -14,6 +19,7 @@ interface SimplifiedPanelProps {
 export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
   navigation,
   destination,
+  environment,
   onStart,
   onStop,
   running,
@@ -41,7 +47,35 @@ export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
           <Info label="ETA" value={formatEta(destination.etaMinutes)} />
         )}
         {destination?.hasArrived && <Info label="Status" value="Ankommet" />}
+        {environment && (
+          <Info
+            label="Vind"
+            value={`${environment.windSpeedKnots.toFixed(
+              1
+            )} kn @ ${environment.windDirectionDegrees.toFixed(0)}°`}
+          />
+        )}
+        {environment && (
+          <Info
+            label="Bølger"
+            value={`${environment.waveHeightMeters.toFixed(
+              1
+            )} m / ${environment.wavePeriodSeconds.toFixed(0)}s`}
+          />
+        )}
       </Box>
+      {environment && (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <WindSock
+            direction={environment.windDirectionDegrees}
+            speed={environment.windSpeedKnots}
+          />
+          <Typography variant="caption" sx={{ opacity: 0.7 }}>
+            Vindpølse peker TIL hvor vinden blåser (retning{" "}
+            {environment.windDirectionDegrees.toFixed(0)}°)
+          </Typography>
+        </Box>
+      )}
 
       <Stack direction="row" spacing={2}>
         <Button
@@ -87,3 +121,33 @@ function formatEta(mins: number) {
   const m = Math.round(mins % 60);
   return `${h}t ${m}m`;
 }
+
+// Enkel vindpølse komponent (ren CSS transform)
+const WindSock = ({
+  direction,
+  speed,
+}: {
+  direction: number;
+  speed: number;
+}) => {
+  const intensity = Math.min(1, speed / 25); // scale 0..1 (25 kn cap)
+  const length = 30 + 50 * intensity; // px
+  const color = speed > 20 ? "#ff5252" : speed > 12 ? "#ff9800" : "#4caf50";
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+      <Box
+        sx={{
+          width: 8,
+          height: length,
+          background: color,
+          borderRadius: "4px",
+          transform: `rotate(${direction}deg)`,
+          transformOrigin: "center top",
+          transition: "transform 0.6s ease, background 0.4s",
+          boxShadow: "0 0 4px rgba(0,0,0,0.4)",
+        }}
+        title={`Vind ${speed.toFixed(1)} kn @ ${direction.toFixed(0)}°`}
+      />
+    </Box>
+  );
+};

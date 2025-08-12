@@ -9,7 +9,11 @@ import {
 import { VesselMap } from "./components/VesselMap";
 // Forenklet dashbord: vi fjerner miljø/alarmer/ruteredigering foreløpig
 import { SimplifiedPanel } from "./components/SimplifiedPanel";
-import { NavigationData, DestinationStatus } from "./types/messages";
+import {
+  NavigationData,
+  DestinationStatus,
+  EnvironmentData,
+} from "./types/messages";
 
 const darkTheme = createTheme({
   palette: {
@@ -22,6 +26,7 @@ function App() {
   const [destination, setDestination] = useState<DestinationStatus | null>(
     null
   );
+  const [environment, setEnvironment] = useState<EnvironmentData | null>(null);
   // Hvis dashboardet åpnes direkte på port 3000 (bypasser Traefik), må vi sende API-kall til Traefik på port 80
   const apiBase =
     window.location.port === "3000" ? `http://${window.location.hostname}` : "";
@@ -109,6 +114,27 @@ function App() {
           if (plannedStartRef.current) plannedStartRef.current = null;
           return;
         }
+        // Format B: Env (topic-wrapped) legacy
+        if (parsed && parsed.topic === "sim.sensors.env" && parsed.data) {
+          const e = parsed.data;
+          const env: EnvironmentData = {
+            timestampUtc: e.timestampUtc || e.TimestampUtc,
+            mode: (e.mode || e.Mode || "Dynamic") as any,
+            windSpeedKnots: e.windSpeedKnots ?? e.WindSpeedKnots ?? 0,
+            windDirectionDegrees:
+              e.windDirectionDegrees ?? e.WindDirectionDegrees ?? 0,
+            currentSpeedKnots: e.currentSpeedKnots ?? e.CurrentSpeedKnots ?? 0,
+            currentDirectionDegrees:
+              e.currentDirectionDegrees ?? e.CurrentDirectionDegrees ?? 0,
+            waveHeightMeters: e.waveHeightMeters ?? e.WaveHeightMeters ?? 0,
+            waveDirectionDegrees:
+              e.waveDirectionDegrees ?? e.WaveDirectionDegrees ?? 0,
+            wavePeriodSeconds: e.wavePeriodSeconds ?? e.WavePeriodSeconds ?? 0,
+          };
+          setEnvironment(env);
+          return;
+        }
+
         // Format B: rå nav-record fra gateway (PascalCase)
         if (
           typeof parsed?.Latitude === "number" &&
@@ -139,7 +165,7 @@ function App() {
           if (plannedStartRef.current) plannedStartRef.current = null;
           return;
         }
-        // Format C: rå nav med camelCase
+        // Format C: Rå nav camelCase OG mulige env felt camelCase
         if (
           typeof parsed?.latitude === "number" &&
           typeof parsed?.longitude === "number"
@@ -163,6 +189,20 @@ function App() {
             if (off > 0.0001) return;
           }
           setNavigation(nav);
+          if (typeof d.windSpeedKnots === "number") {
+            const env: EnvironmentData = {
+              timestampUtc: d.timestampUtc,
+              mode: (d.mode || "Dynamic") as any,
+              windSpeedKnots: d.windSpeedKnots,
+              windDirectionDegrees: d.windDirectionDegrees || 0,
+              currentSpeedKnots: d.currentSpeedKnots || 0,
+              currentDirectionDegrees: d.currentDirectionDegrees || 0,
+              waveHeightMeters: d.waveHeightMeters || 0,
+              waveDirectionDegrees: d.waveDirectionDegrees || 0,
+              wavePeriodSeconds: d.wavePeriodSeconds || 0,
+            };
+            setEnvironment(env);
+          }
           if (plannedStartRef.current) plannedStartRef.current = null;
           return;
         }
@@ -276,6 +316,7 @@ function App() {
             <SimplifiedPanel
               navigation={navigation}
               destination={destination}
+              environment={environment}
               onStart={startJourney}
               onStop={stopJourney}
               running={
