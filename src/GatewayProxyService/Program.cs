@@ -93,7 +93,7 @@ app.Map("/ws/nav", async context =>
                 if (ws.State != System.Net.WebSockets.WebSocketState.Open) return;
                 var json = Encoding.UTF8.GetString(a.Message.Data);
                 var buffer = Encoding.UTF8.GetBytes(json);
-                ws.SendAsync(buffer, System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token).AsTask().ConfigureAwait(false);
+                _ = ws.SendAsync(buffer, System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token);
             }
             catch (Exception ex)
             {

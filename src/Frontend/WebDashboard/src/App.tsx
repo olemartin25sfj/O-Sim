@@ -7,15 +7,12 @@ import {
   createTheme,
 } from "@mui/material";
 import { VesselMap } from "./components/VesselMap";
-import { EnvironmentPanel } from "./components/EnvironmentPanel";
-import { ControlPanel } from "./components/ControlPanel";
-import { AlarmPanel } from "./components/AlarmPanel";
-import { RouteControls } from "./components/RouteControls";
+// Forenklet dashbord: vi fjerner miljø/alarmer/ruteredigering foreløpig
+import { SimplifiedPanel } from "./components/SimplifiedPanel";
 import {
   NavigationData,
-  EnvironmentData,
-  AlarmData,
   WebSocketMessage,
+  DestinationStatus,
 } from "./types/messages";
 
 const darkTheme = createTheme({
@@ -26,8 +23,9 @@ const darkTheme = createTheme({
 
 function App() {
   const [navigation, setNavigation] = useState<NavigationData | null>(null);
-  const [environment, setEnvironment] = useState<EnvironmentData | null>(null);
-  const [alarms, setAlarms] = useState<AlarmData[]>([]);
+  const [destination, setDestination] = useState<DestinationStatus | null>(
+    null
+  );
   // Hvis dashboardet åpnes direkte på port 3000 (bypasser Traefik), må vi sende API-kall til Traefik på port 80
   const apiBase =
     window.location.port === "3000" ? `http://${window.location.hostname}` : "";
@@ -36,8 +34,7 @@ function App() {
   const [startPoint, setStartPoint] = useState<[number, number] | null>(null);
   const [endPoint, setEndPoint] = useState<[number, number] | null>(null);
   const [cruiseSpeed, setCruiseSpeed] = useState<number>(12);
-  const [journeyStarting, setJourneyStarting] = useState(false);
-  const [lastJourneyMsg, setLastJourneyMsg] = useState<string | null>(null);
+  // Journey feedback fjernet i forenklet UI
 
   useEffect(() => {
     const wsBase = `${window.location.protocol === "https:" ? "wss" : "ws"}://${
@@ -64,34 +61,6 @@ function App() {
           setNavigation(nav);
           break;
         }
-        case "sim.sensors.env": {
-          const d = message.data;
-          const env: EnvironmentData = {
-            timestampUtc: d.timestampUtc || d.timestamp,
-            mode: d.mode || "Dynamic",
-            windSpeedKnots: d.windSpeedKnots,
-            windDirectionDegrees: d.windDirectionDegrees ?? d.windDirection,
-            currentSpeedKnots: d.currentSpeedKnots ?? d.currentSpeed,
-            currentDirectionDegrees:
-              d.currentDirectionDegrees ?? d.currentDirection,
-            waveHeightMeters: d.waveHeightMeters ?? d.waveHeight,
-            waveDirectionDegrees: d.waveDirectionDegrees ?? d.waveDirection,
-            wavePeriodSeconds: d.wavePeriodSeconds ?? d.wavePeriod,
-          };
-          setEnvironment(env);
-          break;
-        }
-        case "alarm.triggers": {
-          const d = message.data;
-          const alarm: AlarmData = {
-            timestampUtc: d.timestampUtc || d.timestamp,
-            alarmType: d.alarmType || d.type,
-            message: d.message,
-            severity: d.severity,
-          };
-          setAlarms((prev) => [...prev, alarm]);
-          break;
-        }
       }
     };
 
@@ -110,7 +79,6 @@ function App() {
   const canStartJourney = !!endPoint; // start optional (falls back to current or existing position)
   const startJourney = async () => {
     if (!endPoint) return;
-    setJourneyStarting(true);
     try {
       const payload: any = {
         endLatitude: endPoint[0],
@@ -121,39 +89,12 @@ function App() {
         payload.startLatitude = startPoint[0];
         payload.startLongitude = startPoint[1];
       }
-      const res = await fetch(`${apiBase}/api/simulator/journey`, {
+      await fetch(`${apiBase}/api/simulator/journey`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (res.ok) {
-        setLastJourneyMsg("Journey started");
-      } else {
-        setLastJourneyMsg("Journey failed");
-      }
-    } catch (e) {
-      setLastJourneyMsg("Journey error");
-    } finally {
-      setJourneyStarting(false);
-      setTimeout(() => setLastJourneyMsg(null), 4000);
-    }
-  };
-
-  const handleSetCourse = async (course: number) => {
-    try {
-      await fetch(`${apiBase}/api/simulator/course`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          timestamp: new Date().toISOString(),
-          targetCourseDegrees: course,
-        }),
-      });
-    } catch (error) {
-      console.error("Failed to set course:", error);
-    }
+    } catch {}
   };
 
   const handleSetSpeed = async (speed: number) => {
@@ -173,23 +114,19 @@ function App() {
     }
   };
 
-  const handleSetPosition = async (latitude: number, longitude: number) => {
-    try {
-      await fetch(`${apiBase}/api/simulator/position`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          timestamp: new Date().toISOString(),
-          latitude,
-          longitude,
-        }),
-      });
-    } catch (error) {
-      console.error("Failed to set position:", error);
-    }
-  };
+  // Enkel polling av destinasjonsstatus (ETA/distanse)
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const r = await fetch(`${apiBase}/api/simulator/destination`);
+        if (r.ok) {
+          const json = await r.json();
+          setDestination(json);
+        }
+      } catch {}
+    }, 4000);
+    return () => clearInterval(id);
+  }, [apiBase]);
 
   return (
     <ThemeProvider theme={darkTheme}>
@@ -206,33 +143,15 @@ function App() {
             />
           </Grid>
           <Grid item xs={12} md={4} sx={{ height: "70vh", overflow: "auto" }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <ControlPanel
-                  onSetCourse={handleSetCourse}
-                  onSetPosition={handleSetPosition}
-                  currentCourse={navigation?.headingDegrees}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <RouteControls
-                  onSetSpeed={handleSetSpeed}
-                  currentSpeed={navigation?.speedKnots}
-                  cruiseSpeed={cruiseSpeed}
-                  onCruiseSpeedChange={setCruiseSpeed}
-                  canStartJourney={canStartJourney}
-                  onStartJourney={startJourney}
-                  journeyStarting={journeyStarting}
-                  lastJourneyMsg={lastJourneyMsg}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <EnvironmentPanel environment={environment} />
-              </Grid>
-              <Grid item xs={12}>
-                <AlarmPanel alarms={alarms} />
-              </Grid>
-            </Grid>
+            <SimplifiedPanel
+              navigation={navigation}
+              destination={destination}
+              onSetSpeed={handleSetSpeed}
+              onStartJourney={startJourney}
+              cruiseSpeed={cruiseSpeed}
+              onCruiseSpeedChange={setCruiseSpeed}
+              canStartJourney={canStartJourney}
+            />
           </Grid>
         </Grid>
       </Container>

@@ -31,3 +31,13 @@ export interface WebSocketMessage<T> {
   topic: string;
   data: T;
 }
+
+// Pollet destinasjonsstatus fra /api/simulator/destination
+export interface DestinationStatus {
+  hasDestination: boolean;
+  targetLatitude?: number;
+  targetLongitude?: number;
+  distanceNm?: number;
+  etaMinutes?: number;
+  hasArrived?: boolean;
+}
