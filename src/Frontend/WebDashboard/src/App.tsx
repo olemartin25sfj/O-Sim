@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Container,
   Grid,
@@ -9,11 +9,7 @@ import {
 import { VesselMap } from "./components/VesselMap";
 // Forenklet dashbord: vi fjerner miljø/alarmer/ruteredigering foreløpig
 import { SimplifiedPanel } from "./components/SimplifiedPanel";
-import {
-  NavigationData,
-  WebSocketMessage,
-  DestinationStatus,
-} from "./types/messages";
+import { NavigationData, DestinationStatus } from "./types/messages";
 
 const darkTheme = createTheme({
   palette: {
@@ -33,7 +29,45 @@ function App() {
   // start/end + cruise speed state
   const [startPoint, setStartPoint] = useState<[number, number] | null>(null);
   const [endPoint, setEndPoint] = useState<[number, number] | null>(null);
-  const [cruiseSpeed, setCruiseSpeed] = useState<number>(12);
+  const [running, setRunning] = useState(false);
+  // Track of vessel positions while a journey is active
+  const [journeyTrack, setJourneyTrack] = useState<[number, number][]>([]);
+  const [arrivalPoint, setArrivalPoint] = useState<[number, number] | null>(
+    null
+  );
+  // Når vi starter med et eksplisitt startpunkt, vil første nav-melding kunne være gammel posisjon.
+  // Vi lagrer ønsket start for å filtrere bort ett "teleport" hopp.
+  const plannedStartRef = useRef<[number, number] | null>(null);
+
+  // Append to track when running
+  useEffect(() => {
+    if (!running) return;
+    if (!navigation) return;
+    setJourneyTrack((t) => {
+      const last = t[t.length - 1];
+      const next: [number, number] = [
+        navigation.latitude,
+        navigation.longitude,
+      ];
+      if (
+        last &&
+        Math.abs(last[0] - next[0]) < 1e-6 &&
+        Math.abs(last[1] - next[1]) < 1e-6
+      )
+        return t; // ignore identical
+      return [...t, next];
+    });
+  }, [navigation, running]);
+
+  // Reset track when journey finishes
+  useEffect(() => {
+    if (destination?.hasArrived) {
+      setRunning(false);
+      if (!arrivalPoint && navigation) {
+        setArrivalPoint([navigation.latitude, navigation.longitude]);
+      }
+    }
+  }, [destination]);
   // Journey feedback fjernet i forenklet UI
 
   useEffect(() => {
@@ -43,12 +77,74 @@ function App() {
     const socket = new WebSocket(`${wsBase}/ws/nav`);
 
     socket.onmessage = (event) => {
-      const message: WebSocketMessage<any> = JSON.parse(event.data);
-
-      switch (message.topic) {
-        case "sim.sensors.nav": {
-          const d = message.data;
-          // Adapter: støtt både gamle og nye feltnavn
+      try {
+        const parsed = JSON.parse(event.data);
+        // Format A: wrapped with topic + data (tidligere antatt struktur)
+        if (parsed && parsed.topic === "sim.sensors.nav" && parsed.data) {
+          const d = parsed.data;
+          const nav: NavigationData = {
+            timestampUtc: d.timestampUtc || d.timestamp || d.TimestampUtc,
+            latitude: d.latitude ?? d.Latitude,
+            longitude: d.longitude ?? d.Longitude,
+            headingDegrees:
+              d.headingDegrees ?? d.HeadingDegrees ?? d.heading ?? d.Heading,
+            speedKnots: d.speedKnots ?? d.SpeedKnots ?? d.speed ?? d.Speed,
+            courseOverGroundDegrees:
+              d.courseOverGroundDegrees ??
+              d.CourseOverGroundDegrees ??
+              d.courseOverGround ??
+              d.CourseOverGround ??
+              d.headingDegrees ??
+              d.HeadingDegrees,
+          };
+          // Filter: ignorer første gamle posisjon dersom vi nettopp har satt et manuelt startpunkt
+          if (plannedStartRef.current && journeyTrack.length <= 1) {
+            const ps = plannedStartRef.current;
+            const off =
+              Math.abs(nav.latitude - ps[0]) + Math.abs(nav.longitude - ps[1]);
+            // Hvis meldingen ikke matcher ønsket start (gamle koordinater), hopp over
+            if (off > 0.0001) return;
+          }
+          setNavigation(nav);
+          if (plannedStartRef.current) plannedStartRef.current = null;
+          return;
+        }
+        // Format B: rå nav-record fra gateway (PascalCase)
+        if (
+          typeof parsed?.Latitude === "number" &&
+          typeof parsed?.Longitude === "number"
+        ) {
+          const d = parsed;
+          const nav: NavigationData = {
+            timestampUtc: d.TimestampUtc || d.timestampUtc || d.timestamp,
+            latitude: d.Latitude,
+            longitude: d.Longitude,
+            headingDegrees:
+              d.HeadingDegrees ?? d.headingDegrees ?? d.heading ?? d.Heading,
+            speedKnots: d.SpeedKnots ?? d.speedKnots ?? d.speed ?? d.Speed,
+            courseOverGroundDegrees:
+              d.CourseOverGroundDegrees ??
+              d.courseOverGroundDegrees ??
+              d.courseOverGround ??
+              d.HeadingDegrees ??
+              d.headingDegrees,
+          };
+          if (plannedStartRef.current && journeyTrack.length <= 1) {
+            const ps = plannedStartRef.current;
+            const off =
+              Math.abs(nav.latitude - ps[0]) + Math.abs(nav.longitude - ps[1]);
+            if (off > 0.0001) return; // skip stale
+          }
+          setNavigation(nav);
+          if (plannedStartRef.current) plannedStartRef.current = null;
+          return;
+        }
+        // Format C: rå nav med camelCase
+        if (
+          typeof parsed?.latitude === "number" &&
+          typeof parsed?.longitude === "number"
+        ) {
+          const d = parsed;
           const nav: NavigationData = {
             timestampUtc: d.timestampUtc || d.timestamp,
             latitude: d.latitude,
@@ -56,11 +152,22 @@ function App() {
             headingDegrees: d.headingDegrees ?? d.heading,
             speedKnots: d.speedKnots ?? d.speed,
             courseOverGroundDegrees:
-              d.courseOverGroundDegrees ?? d.courseOverGround,
+              d.courseOverGroundDegrees ??
+              d.courseOverGround ??
+              d.headingDegrees,
           };
+          if (plannedStartRef.current && journeyTrack.length <= 1) {
+            const ps = plannedStartRef.current;
+            const off =
+              Math.abs(nav.latitude - ps[0]) + Math.abs(nav.longitude - ps[1]);
+            if (off > 0.0001) return;
+          }
           setNavigation(nav);
-          break;
+          if (plannedStartRef.current) plannedStartRef.current = null;
+          return;
         }
+      } catch {
+        // ignorer parse-feil
       }
     };
 
@@ -83,7 +190,7 @@ function App() {
       const payload: any = {
         endLatitude: endPoint[0],
         endLongitude: endPoint[1],
-        cruiseSpeedKnots: cruiseSpeed,
+        cruiseSpeedKnots: 20,
       };
       if (startPoint) {
         payload.startLatitude = startPoint[0];
@@ -94,24 +201,32 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      setRunning(true);
+      if (startPoint) {
+        // Seed track med startpunkt for å unngå linje fra gammel posisjon
+        setJourneyTrack([[startPoint[0], startPoint[1]]]);
+        plannedStartRef.current = startPoint;
+        // Optimistisk flytt ikon umiddelbart
+        setNavigation((prev) =>
+          prev
+            ? { ...prev, latitude: startPoint[0], longitude: startPoint[1] }
+            : prev
+        );
+      } else {
+        setJourneyTrack([]);
+        plannedStartRef.current = null;
+      }
+      setArrivalPoint(null);
     } catch {}
   };
 
-  const handleSetSpeed = async (speed: number) => {
+  const stopJourney = async () => {
     try {
-      await fetch(`${apiBase}/api/simulator/speed`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          timestamp: new Date().toISOString(),
-          targetSpeedKnots: speed,
-        }),
-      });
-    } catch (error) {
-      console.error("Failed to set speed:", error);
-    }
+      await fetch(`${apiBase}/api/simulator/stop`, { method: "POST" });
+    } catch {}
+    setRunning(false);
+    setJourneyTrack([]);
+    setArrivalPoint(null);
   };
 
   // Enkel polling av destinasjonsstatus (ETA/distanse)
@@ -140,16 +255,34 @@ function App() {
               onSelectEnd={handleEndPoint}
               selectedStart={startPoint}
               selectedEnd={endPoint}
+              journeyStart={
+                startPoint ||
+                (navigation
+                  ? [navigation.latitude, navigation.longitude]
+                  : undefined)
+              }
+              journeyEnd={endPoint}
+              journeyTrack={journeyTrack}
+              isJourneyRunning={
+                running &&
+                !!destination?.hasDestination &&
+                !destination?.hasArrived
+              }
+              hasArrived={!!destination?.hasArrived}
+              arrivalPoint={arrivalPoint}
             />
           </Grid>
           <Grid item xs={12} md={4} sx={{ height: "70vh", overflow: "auto" }}>
             <SimplifiedPanel
               navigation={navigation}
               destination={destination}
-              onSetSpeed={handleSetSpeed}
-              onStartJourney={startJourney}
-              cruiseSpeed={cruiseSpeed}
-              onCruiseSpeedChange={setCruiseSpeed}
+              onStart={startJourney}
+              onStop={stopJourney}
+              running={
+                running &&
+                !!destination?.hasDestination &&
+                !destination?.hasArrived
+              }
               canStartJourney={canStartJourney}
             />
           </Grid>

@@ -1,5 +1,37 @@
-.vessel-icon {
-  transition: transform 0.3s ease-in-out;
+/* Smooth rotation for ship icon wrapper */
+.ship-icon-wrapper .ship-icon {
+  transition: transform 0.4s ease-in-out;
+  will-change: transform;
+}
+
+/* Arrival marker styling */
+.arrival-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.arrival-marker .pulse {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 230, 118, 0.35);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.7;
+  }
+  60% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
 }
 
 .leaflet-container {

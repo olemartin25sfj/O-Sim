@@ -61,6 +61,13 @@ namespace SimulatorService
             HasArrived = false;
         }
 
+        public void ClearDestination()
+        {
+            _targetLat = null;
+            _targetLon = null;
+            HasArrived = false;
+        }
+
         public void SetDesiredHeading(double heading)
         {
             _desiredHeading = NormalizeAngle(heading);

@@ -63,6 +63,15 @@ interface VesselMapProps {
   onSelectEnd?: (lat: number, lon: number) => void;
   selectedStart?: [number, number] | null;
   selectedEnd?: [number, number] | null;
+  // Active journey (planned) start and end
+  journeyStart?: [number, number] | null;
+  journeyEnd?: [number, number] | null;
+  // Track of vessel positions during active journey
+  journeyTrack?: [number, number][];
+  isJourneyRunning?: boolean;
+  // Arrival info
+  hasArrived?: boolean;
+  arrivalPoint?: [number, number] | null;
 }
 
 interface Route {
@@ -84,6 +93,12 @@ export const VesselMap = ({
   onSelectEnd,
   selectedStart,
   selectedEnd,
+  journeyStart,
+  journeyEnd,
+  journeyTrack,
+  isJourneyRunning,
+  hasArrived,
+  arrivalPoint,
 }: VesselMapProps) => {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -109,6 +124,24 @@ export const VesselMap = ({
   const position: [number, number] = navigation
     ? [navigation.latitude, navigation.longitude]
     : defaultPosition;
+
+  // Smoothed heading interpolation
+  const [displayHeading, setDisplayHeading] = useState<number>(
+    navigation?.headingDegrees ?? 0
+  );
+  useEffect(() => {
+    if (!navigation) return;
+    const target = navigation.headingDegrees;
+    setDisplayHeading((prev) => {
+      let diff = ((target - prev + 540) % 360) - 180; // shortest path
+      // limit step to avoid large jumps (e.g., wrap-around)
+      const step = diff * 0.35; // smoothing factor
+      const next = prev + step;
+      // close enough -> snap
+      if (Math.abs(diff) < 0.5) return target;
+      return (next + 360) % 360;
+    });
+  }, [navigation?.headingDegrees, navigation]);
 
   const generateId = () => Math.random().toString(36).slice(2, 11);
 
@@ -461,13 +494,29 @@ export const VesselMap = ({
               }
             />
           )}
+          {/* Planned active journey (when running) */}
+          {journeyStart && journeyEnd && (
+            <Polyline
+              positions={[journeyStart, journeyEnd]}
+              color={isJourneyRunning ? "#00e676" : "#757575"}
+              dashArray={isJourneyRunning ? "4 8" : "2 6"}
+              weight={isJourneyRunning ? 5 : 3}
+              opacity={0.85}
+            />
+          )}
+          {/* Traveled track */}
+          {journeyTrack && journeyTrack.length > 1 && (
+            <Polyline
+              positions={journeyTrack}
+              color="#ffeb3b"
+              weight={3}
+              opacity={0.9}
+            />
+          )}
           <ClickHandler />
           {/* Current vessel position */}
           {navigation && (
-            <Marker
-              position={position}
-              icon={createShipIcon(navigation.headingDegrees)}
-            >
+            <Marker position={position} icon={createShipIcon(displayHeading)}>
               <Popup>
                 <div>
                   <strong>Vessel Position</strong>
@@ -481,6 +530,19 @@ export const VesselMap = ({
                 </div>
               </Popup>
             </Marker>
+          )}
+          {/* Arrival marker */}
+          {hasArrived && arrivalPoint && (
+            <Marker
+              position={arrivalPoint}
+              icon={divIcon({
+                className: "arrival-marker-wrapper",
+                html: `<div class="arrival-marker" title="Ankomst">
+                        <div class="pulse"></div>
+                        <img src="/marker-end.svg" width="28" height="28" />
+                      </div>`,
+              })}
+            />
           )}
           <MapCenterUpdater
             position={new LatLng(position[0], position[1])}

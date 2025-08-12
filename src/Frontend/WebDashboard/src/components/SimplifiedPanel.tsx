@@ -1,24 +1,22 @@
 import React from "react";
-import { Paper, Box, Typography, Slider, Button, Stack } from "@mui/material";
+import { Paper, Box, Typography, Button, Stack } from "@mui/material";
 import { NavigationData, DestinationStatus } from "../types/messages";
 
 interface SimplifiedPanelProps {
   navigation: NavigationData | null;
   destination: DestinationStatus | null;
-  onSetSpeed: (speed: number) => void;
-  onStartJourney: () => void;
-  cruiseSpeed: number;
-  onCruiseSpeedChange: (v: number) => void;
-  canStartJourney: boolean;
+  onStart: () => void; // start journey with fixed speed
+  onStop: () => void; // manual stop
+  running: boolean;
+  canStartJourney: boolean; // has destination selected
 }
 
 export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
   navigation,
   destination,
-  onSetSpeed,
-  onStartJourney,
-  cruiseSpeed,
-  onCruiseSpeedChange,
+  onStart,
+  onStop,
+  running,
   canStartJourney,
 }) => {
   const speed = navigation?.speedKnots ?? 0;
@@ -45,54 +43,29 @@ export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
         {destination?.hasArrived && <Info label="Status" value="Ankommet" />}
       </Box>
 
-      <Box>
-        <Typography variant="subtitle2" gutterBottom>
-          Sett fart
-        </Typography>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Slider
-            value={speed}
-            min={0}
-            max={25}
-            step={0.5}
-            onChange={(_, v) => onSetSpeed(v as number)}
-            valueLabelDisplay="auto"
-            sx={{ flex: 1 }}
-          />
-          <Button
-            variant="contained"
-            size="small"
-            onClick={() => onSetSpeed(speed)}
-          >
-            Oppdatér
-          </Button>
-        </Stack>
-      </Box>
-
-      <Box>
-        <Typography variant="subtitle2" gutterBottom>
-          Journey cruise-fart
-        </Typography>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Slider
-            value={cruiseSpeed}
-            min={0}
-            max={25}
-            step={0.5}
-            onChange={(_, v) => onCruiseSpeedChange(v as number)}
-            valueLabelDisplay="auto"
-            sx={{ flex: 1 }}
-          />
-          <Button
-            variant="contained"
-            size="small"
-            disabled={!canStartJourney}
-            onClick={onStartJourney}
-          >
-            Start
-          </Button>
-        </Stack>
-      </Box>
+      <Stack direction="row" spacing={2}>
+        <Button
+          variant="contained"
+          color="success"
+          disabled={!canStartJourney || running}
+          onClick={onStart}
+        >
+          Start (20 kn)
+        </Button>
+        <Button
+          variant="contained"
+          color="error"
+          disabled={!running && speed < 0.1}
+          onClick={onStop}
+        >
+          Stopp
+        </Button>
+      </Stack>
+      <Typography variant="caption" sx={{ opacity: 0.6 }}>
+        {running
+          ? "Reise aktiv – fart styres automatisk mot 20 kn."
+          : "Velg start (S) og destinasjon (D) i kartet for å aktivere Start."}
+      </Typography>
     </Paper>
   );
 };

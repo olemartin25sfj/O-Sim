@@ -208,6 +208,16 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngin
     }
 });
 
+// Manuell stopp av fartøy / kanseller reise
+app.MapPost("/api/simulator/stop", (SimulatorEngine engine, AutopilotService autopilot, IConnection nats) =>
+{
+    autopilot.Cancel();
+    engine.SetDesiredSpeed(0.0);
+    var stopEvt = new { timestampUtc = DateTime.UtcNow, reason = "manual" };
+    PublishCommandAndLog(nats, "sim.commands.stop", stopEvt, "SimulatorService", "Manual stop issued");
+    return Results.Ok(new { Message = "Stopped" });
+}).WithName("SimulatorStop");
+
 // Destination / progress status
 app.MapGet("/api/simulator/destination", (SimulatorEngine engine, AutopilotService autopilot) =>
 {
@@ -228,6 +238,27 @@ app.MapGet("/api/simulator/destination", (SimulatorEngine engine, AutopilotServi
         distanceNm,
         etaMinutes,
         hasArrived = engine.HasArrived
+    });
+});
+
+// Debug endpoint to inspect internal state
+app.MapGet("/api/simulator/debug", (SimulatorEngine engine, AutopilotService autopilot) =>
+{
+    var ap = autopilot.GetDebugState();
+    return Results.Ok(new
+    {
+        engine = new
+        {
+            engine.Latitude,
+            engine.Longitude,
+            engine.Heading,
+            engine.Speed,
+            engine.HasDestination,
+            engine.HasArrived,
+            engine.TargetLatitude,
+            engine.TargetLongitude
+        },
+        autopilot = ap
     });
 });
 

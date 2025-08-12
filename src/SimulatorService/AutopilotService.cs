@@ -16,7 +16,8 @@ namespace SimulatorService
         private double _targetLongitude;
         private bool _hasTarget;
 
-        private const double ArrivalThresholdNm = 0.05; // 50 meter
+        // Match engine arrival threshold (25 m -> nm)
+        private const double ArrivalThresholdNm = 25.0 / 1852.0; // ~0.0135 nm (25 m)
         private double _cruisingSpeed = 15.0; // kan justeres via API
 
         public AutopilotService(SimulatorEngine engine)
@@ -29,6 +30,8 @@ namespace SimulatorService
             _targetLatitude = latitude;
             _targetLongitude = longitude;
             _hasTarget = true;
+            // Synkroniser også motorens destinasjon slik at API status reflekterer målet
+            _engine.SetDestination(latitude, longitude);
         }
 
         public (bool hasTarget, double? distanceNm) GetDestinationStatus(double currentLat, double currentLon)
@@ -50,19 +53,38 @@ namespace SimulatorService
 
             double currentLat = _engine.Latitude;
             double currentLon = _engine.Longitude;
-
             double distanceNm = HaversineDistanceNm(currentLat, currentLon, _targetLatitude, _targetLongitude);
 
+            // Slow down when inside arrival zone but keep reporting target until engine flags HasArrived
             if (distanceNm < ArrivalThresholdNm)
             {
                 _engine.SetDesiredSpeed(0.0);
-                _hasTarget = false;
+                if (_engine.HasArrived)
+                {
+                    _hasTarget = false; // allow UI to clear destination after engine confirms arrival
+                }
                 return;
             }
 
             double desiredCourse = CalculateBearing(currentLat, currentLon, _targetLatitude, _targetLongitude);
             _engine.SetDesiredHeading(desiredCourse);
             _engine.SetDesiredSpeed(_cruisingSpeed);
+        }
+
+        // Debug state record
+        public record AutopilotDebugState(bool HasTarget, double TargetLatitude, double TargetLongitude, double CruisingSpeed);
+
+        public AutopilotDebugState GetDebugState()
+        {
+            return new AutopilotDebugState(_hasTarget, _targetLatitude, _targetLongitude, _cruisingSpeed);
+        }
+
+        public void Cancel()
+        {
+            _hasTarget = false;
+            _engine.SetDesiredSpeed(0.0);
+            // Fjern destinasjon i motoren slik at status-endepunkt viser ingen aktiv reise
+            _engine.ClearDestination();
         }
 
         private static double HaversineDistanceNm(double lat1, double lon1, double lat2, double lon2)
