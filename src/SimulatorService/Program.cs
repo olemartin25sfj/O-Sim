@@ -54,6 +54,22 @@ app.MapGet("/api/simulator/status", () =>
     return Results.Ok(new { Status = "Running", Timestamp = DateTime.UtcNow });
 });
 
+// Enkel nåværende navigasjonstilstand for polling (alternativ til websocket)
+app.MapGet("/api/simulator/nav", (SimulatorEngine engine) =>
+{
+    return Results.Ok(new
+    {
+        timestampUtc = DateTime.UtcNow,
+        latitude = engine.Latitude,
+        longitude = engine.Longitude,
+        speedKnots = engine.Speed,
+        headingDegrees = engine.Heading,
+        hasDestination = engine.HasDestination,
+        targetLatitude = engine.TargetLatitude,
+        targetLongitude = engine.TargetLongitude
+    });
+}).WithName("SimulatorNav");
+
 IResult PublishCommandAndLog<T>(IConnection nats, string topic, T payload, string service, string message)
 {
     try

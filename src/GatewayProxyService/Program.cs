@@ -88,20 +88,45 @@ app.Map("/ws/nav", async context =>
         var cts = new CancellationTokenSource();
         var sub = nats.SubscribeAsync("sim.sensors.nav", (s, a) =>
         {
-            var json = Encoding.UTF8.GetString(a.Message.Data);
-            var buffer = Encoding.UTF8.GetBytes(json);
-            ws.SendAsync(buffer, System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token).Wait();
+            try
+            {
+                if (ws.State != System.Net.WebSockets.WebSocketState.Open) return;
+                var json = Encoding.UTF8.GetString(a.Message.Data);
+                var buffer = Encoding.UTF8.GetBytes(json);
+                ws.SendAsync(buffer, System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token).AsTask().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // Unngå spam – logg én gang og lukk
+                app.Logger.LogDebug("WebSocket send feilet: {Message}", ex.Message);
+                cts.Cancel();
+            }
         });
 
-        var buffer2 = new byte[1024];
-        while (ws.State == System.Net.WebSockets.WebSocketState.Open)
+        var buffer2 = new byte[1]; // vi forventer ikke data fra klienten; liten buffer
+        try
         {
-            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer2), cts.Token);
-            if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
-                break;
+            while (ws.State == System.Net.WebSockets.WebSocketState.Open && !cts.IsCancellationRequested)
+            {
+                var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer2), cts.Token);
+                if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                {
+                    await ws.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                    break;
+                }
+            }
         }
-        cts.Cancel();
-        sub.Unsubscribe();
+        catch (System.Net.WebSockets.WebSocketException)
+        {
+            // Stillegående – typisk klienten lukket uten handshake
+            app.Logger.LogDebug("WebSocket frakoblet uventet (klientlukking)");
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            cts.Cancel();
+            try { sub.Unsubscribe(); } catch { }
+        }
     }
     else
     {
