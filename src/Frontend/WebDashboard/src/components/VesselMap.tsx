@@ -120,8 +120,12 @@ export const VesselMap = ({
   const [editableRoutePoints, setEditableRoutePoints] = useState<
     [number, number][] | null
   >(null);
-  // Indeks til midlertidig veipunkt som dras inn (null når inaktiv)
-  const [addingIdx, setAddingIdx] = useState<number | null>(null);
+  // Ny enkel rute-redigeringsmodus
+  const [editMode, setEditMode] = useState(false);
+  const [draftPoints, setDraftPoints] = useState<[number, number][]>([]);
+  const [cursorLatLng, setCursorLatLng] = useState<[number, number] | null>(
+    null
+  );
   const [smoothedRoute, setSmoothedRoute] = useState<[number, number][] | null>(
     null
   );
@@ -217,18 +221,7 @@ export const VesselMap = ({
     }
   }, [selectedRouteId, routes, onActiveRouteChange, editableRoutePoints]);
 
-  // Sett opp enkel rute når bruker har valgt start og slutt (fra props) og ingen eksisterende redigering
-  useEffect(() => {
-    if (!editableRoutePoints && selectedStart && selectedEnd) {
-      setEditableRoutePoints([selectedStart, selectedEnd]);
-      // Slå av evt generert great-circle for å ikke forvirre
-      setActiveGenerated(null);
-    }
-    // Hvis endepunkt fjernes, reset
-    if (editableRoutePoints && (!selectedStart || !selectedEnd)) {
-      setEditableRoutePoints(null);
-    }
-  }, [selectedStart, selectedEnd]);
+  // Fjern automatisk oppretting av rute – styres nå av editMode + brukerklikk
 
   // Catmull-Rom smoothing (planar approx). Returnerer tett samplet kurve.
   function smoothRoute(points: [number, number][], spacingMeters = 120) {
@@ -307,79 +300,90 @@ export const VesselMap = ({
   }, [editableRoutePoints]);
 
   // Hjelp: legg inn nytt veipunkt nærmest segment
-  // insertWaypointAt ble erstattet av beginInsertDrag
+  // Gammel drag-innsetting fjernet
 
   // Start innsetting + dragging: returnerer indeks for ny node
-  const beginInsertDrag = (lat: number, lon: number) => {
-    if (!editableRoutePoints || editableRoutePoints.length < 2) return;
-    // Bruk samme algoritme men hold på indeksen vi satte inn
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < editableRoutePoints.length - 1; i++) {
-      const d = distancePointToSegment(
-        lat,
-        lon,
-        editableRoutePoints[i],
-        editableRoutePoints[i + 1]
-      );
-      if (d < bestDist) {
-        bestDist = d;
-        bestIdx = i;
-      }
+  const commitDraftToEditable = () => {
+    if (draftPoints.length >= 2) {
+      setEditableRoutePoints(draftPoints);
+    } else {
+      setEditableRoutePoints(null);
     }
-    setEditableRoutePoints((pts) => {
-      if (!pts) return pts;
-      const newPts = [...pts];
-      newPts.splice(bestIdx + 1, 0, [lat, lon]);
-      // Sett addingIdx etter at vi faktisk har lagt inn
-      setAddingIdx(bestIdx + 1);
-      return newPts;
-    });
+    setDraftPoints([]);
+    setCursorLatLng(null);
+    setEditMode(false);
+  };
+
+  const cancelDraft = () => {
+    setDraftPoints([]);
+    setCursorLatLng(null);
+    setEditMode(false);
   };
 
   // Avstand punkt->segment (grovt, grader skalert med cos mid-lat for lon)
-  function distancePointToSegment(
-    lat: number,
-    lon: number,
-    a: [number, number],
-    b: [number, number]
-  ) {
-    const toRad = (d: number) => (d * Math.PI) / 180;
-    const latScale = 111320; // meter per grad lat
-    const midLat = toRad((a[0] + b[0]) / 2);
-    const lonScale = 111320 * Math.cos(midLat);
-    const ax = (b[1] - a[1]) * lonScale;
-    const ay = (b[0] - a[0]) * latScale;
-    const px = (lon - a[1]) * lonScale;
-    const py = (lat - a[0]) * latScale;
-    const segLen2 = ax * ax + ay * ay || 1;
-    let t = (px * ax + py * ay) / segLen2;
-    t = Math.max(0, Math.min(1, t));
-    const cx = ax * t;
-    const cy = ay * t;
-    const dx = px - cx;
-    const dy = py - cy;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
 
   // Oppdater waypoint ved dragging
   const updateWaypoint = (index: number, lat: number, lon: number) => {
-    setEditableRoutePoints((pts) => {
-      if (!pts) return pts;
-      const next = [...pts];
-      next[index] = [lat, lon];
-      return next;
-    });
+    if (editMode) {
+      setDraftPoints((pts) => {
+        const next = [...pts];
+        next[index] = [lat, lon];
+        return next;
+      });
+    } else {
+      setEditableRoutePoints((pts) => {
+        if (!pts) return pts;
+        const next = [...pts];
+        next[index] = [lat, lon];
+        return next;
+      });
+    }
   };
 
   const removeWaypoint = (index: number) => {
-    setEditableRoutePoints((pts) => {
-      if (!pts) return pts;
-      if (index === 0 || index === pts.length - 1) return pts; // ikke slett endepunkt
-      const next = pts.filter((_, i) => i !== index);
-      return next;
-    });
+    if (editMode) {
+      setDraftPoints((pts) => {
+        if (!pts) return pts;
+        if (index === 0 || index === pts.length - 1) return pts;
+        return pts.filter((_, i) => i !== index);
+      });
+    } else {
+      setEditableRoutePoints((pts) => {
+        if (!pts) return pts;
+        if (index === 0 || index === pts.length - 1) return pts;
+        return pts.filter((_, i) => i !== index);
+      });
+    }
   };
+
+  // Kart-interaksjon for draft (klikk for å legge punkt, mousemove for preview)
+  const DraftInteractionHandler = () => {
+    useMapEvent("mousemove", (e) => {
+      if (editMode) setCursorLatLng([e.latlng.lat, e.latlng.lng]);
+    });
+    useMapEvent("click", (e) => {
+      if (!editMode) return;
+      const p: [number, number] = [e.latlng.lat, e.latlng.lng];
+      setDraftPoints((pts) => [...pts, p]);
+    });
+    return null;
+  };
+
+  // Tastatur for draft (Enter/ESC/Backspace)
+  useEffect(() => {
+    if (!editMode) return;
+    const handler = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        cancelDraft();
+      } else if (ev.key === "Enter") {
+        commitDraftToEditable();
+      } else if (ev.key === "Backspace") {
+        setDraftPoints((pts) => pts.slice(0, -1));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [editMode, draftPoints]);
 
   // Persist start/end & generated route
   useEffect(() => {
@@ -659,28 +663,32 @@ export const VesselMap = ({
             />
           )}
           {/* Interaktiv redigerbar rute (vises når start+slutt valgt) */}
-          {editableRoutePoints && editableRoutePoints.length >= 2 && (
+          {/* Draft polyline (mens bruker tegner) */}
+          {editMode && draftPoints.length > 0 && (
             <Polyline
-              positions={editableRoutePoints}
-              color="#00bcd4"
-              weight={5}
-              dashArray="2 10"
-              opacity={0.85}
-              eventHandlers={{
-                mousedown: (e) => {
-                  // Start drag-innsetting (ikke hvis allerede legger til)
-                  if (addingIdx !== null) return;
-                  beginInsertDrag(e.latlng.lat, e.latlng.lng);
-                  // Forsøk å deaktivere kart-pan midlertidig
-                  try {
-                    // @ts-ignore intern leaflet ref
-                    e.target._map.dragging.disable();
-                  } catch {}
-                },
-              }}
+              positions={
+                cursorLatLng ? [...draftPoints, cursorLatLng] : draftPoints
+              }
+              color="#00acc1"
+              weight={4}
+              dashArray="6 8"
+              opacity={0.9}
             />
           )}
-          {smoothedRoute && smoothedRoute.length > 1 && (
+          {/* Ferdig redigerbar rute (ikke i draft) */}
+          {!editMode &&
+            editableRoutePoints &&
+            editableRoutePoints.length >= 2 && (
+              <Polyline
+                positions={editableRoutePoints}
+                color="#00bcd4"
+                weight={5}
+                dashArray="2 10"
+                opacity={0.65}
+              />
+            )}
+          {/* Glattet rute (aktiv) */}
+          {!editMode && smoothedRoute && smoothedRoute.length > 1 && (
             <Polyline
               positions={smoothedRoute}
               color="#4caf50"
@@ -688,12 +696,13 @@ export const VesselMap = ({
               opacity={0.9}
             />
           )}
-          {editableRoutePoints &&
-            editableRoutePoints.map((pt, idx) => (
+          {/* Waypoint markører */}
+          {editMode &&
+            draftPoints.map((pt, idx) => (
               <Marker
                 key={`editwp-${idx}`}
                 position={pt}
-                draggable={idx !== 0 && idx !== editableRoutePoints.length - 1}
+                draggable={idx !== 0 && idx !== draftPoints.length - 1}
                 eventHandlers={{
                   dragend: (e) => {
                     const ll = e.target.getLatLng();
@@ -710,21 +719,40 @@ export const VesselMap = ({
                   html: `<div style="background:${
                     idx === 0
                       ? "#1b5e20"
-                      : idx === editableRoutePoints.length - 1
+                      : idx === draftPoints.length - 1
                       ? "#b71c1c"
                       : "#00bcd4"
                   };width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,0.6);"></div>`,
                 })}
               />
             ))}
-          {/* Handler for mus-bevegelser når vi legger inn nytt veipunkt via drag */}
-          {addingIdx !== null && (
-            <DragInsertHandler
-              addingIdx={addingIdx}
-              stopDragging={() => setAddingIdx(null)}
-              updateWaypoint={updateWaypoint}
-            />
-          )}
+          {!editMode &&
+            editableRoutePoints &&
+            editableRoutePoints.map((pt, idx) => (
+              <Marker
+                key={`finalwp-${idx}`}
+                position={pt}
+                draggable={idx !== 0 && idx !== editableRoutePoints.length - 1}
+                eventHandlers={{
+                  dragend: (e) => {
+                    const ll = e.target.getLatLng();
+                    updateWaypoint(idx, ll.lat, ll.lng);
+                  },
+                  contextmenu: () => removeWaypoint(idx),
+                }}
+                icon={divIcon({
+                  className: "edit-waypoint",
+                  html: `<div style="background:${
+                    idx === 0
+                      ? "#1b5e20"
+                      : idx === editableRoutePoints.length - 1
+                      ? "#b71c1c"
+                      : "#00bcd4"
+                  };width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,0.6);"></div>`,
+                })}
+              />
+            ))}
+          {editMode && <DraftInteractionHandler />}
           {/* Preview removed */}
           {(selectedStart || startEnd.start) && (
             <Marker
@@ -845,6 +873,36 @@ export const VesselMap = ({
             gap: 1,
           }}
         >
+          <Tooltip
+            title={
+              editMode
+                ? "Avslutt redigering (Enter)"
+                : "Rediger rute (klikk i kartet for punkter)"
+            }
+          >
+            <Fab
+              size="medium"
+              color={editMode ? "secondary" : "primary"}
+              onClick={() => {
+                if (editMode) {
+                  commitDraftToEditable();
+                } else {
+                  // Start ny draft med eksisterende rute (om finnes) ellers tom
+                  setDraftPoints(editableRoutePoints || []);
+                  setEditMode(true);
+                }
+              }}
+            >
+              {editMode ? "Lagre" : "Rute"}
+            </Fab>
+          </Tooltip>
+          {editMode && (
+            <Tooltip title="Avbryt (Esc)">
+              <Fab size="small" color="default" onClick={() => cancelDraft()}>
+                X
+              </Fab>
+            </Tooltip>
+          )}
           <Tooltip title="Legg til rute">
             <Fab
               color="primary"
@@ -1058,31 +1116,4 @@ export const VesselMap = ({
   );
 };
 
-// Hjelpekomponent: overvåker musbevegelse for nytt veipunkt
-function DragInsertHandler({
-  addingIdx,
-  stopDragging,
-  updateWaypoint,
-}: {
-  addingIdx: number;
-  stopDragging: () => void;
-  updateWaypoint: (idx: number, lat: number, lon: number) => void;
-}) {
-  useMapEvent("mousemove", (e) => {
-    updateWaypoint(addingIdx, e.latlng.lat, e.latlng.lng);
-  });
-  useMapEvent("mouseup", (e) => {
-    updateWaypoint(addingIdx, e.latlng.lat, e.latlng.lng);
-    // Re‑aktiver dragging på kartet
-    try {
-      // @ts-ignore
-      e.target.dragging.enable();
-    } catch {}
-    stopDragging();
-  });
-  useMapEvent("mouseout", () => {
-    // Avslutt hvis musepekeren forlater kartet
-    stopDragging();
-  });
-  return null;
-}
+// Tidligere DragInsertHandler fjernet – erstattet av DraftInteractionHandler
