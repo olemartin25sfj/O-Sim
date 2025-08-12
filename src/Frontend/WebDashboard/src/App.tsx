@@ -28,6 +28,9 @@ function App() {
   const [navigation, setNavigation] = useState<NavigationData | null>(null);
   const [environment, setEnvironment] = useState<EnvironmentData | null>(null);
   const [alarms, setAlarms] = useState<AlarmData[]>([]);
+  // Hvis dashboardet åpnes direkte på port 3000 (bypasser Traefik), må vi sende API-kall til Traefik på port 80
+  const apiBase =
+    window.location.port === "3000" ? `http://${window.location.hostname}` : "";
 
   useEffect(() => {
     const socket = new WebSocket("ws://localhost/ws/nav");
@@ -89,7 +92,7 @@ function App() {
 
   const handleSetCourse = async (course: number) => {
     try {
-      await fetch("/api/simulator/course", {
+      await fetch(`${apiBase}/api/simulator/course`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -106,7 +109,7 @@ function App() {
 
   const handleSetSpeed = async (speed: number) => {
     try {
-      await fetch("/api/simulator/speed", {
+      await fetch(`${apiBase}/api/simulator/speed`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -123,7 +126,7 @@ function App() {
 
   const handleSetPosition = async (latitude: number, longitude: number) => {
     try {
-      await fetch("/api/simulator/position", {
+      await fetch(`${apiBase}/api/simulator/position`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

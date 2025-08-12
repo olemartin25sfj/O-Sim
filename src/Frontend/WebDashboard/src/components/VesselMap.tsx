@@ -524,9 +524,11 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
             <Fab
               size="small"
               color={selectMode === "start" ? "success" : "default"}
-              onClick={() =>
-                setSelectMode((m) => (m === "start" ? "none" : "start"))
-              }
+              onClick={() => {
+                setSelectMode((m) => (m === "start" ? "none" : "start"));
+                // Deaktiver auto-følge når bruker går inn i seleksjonsmodus
+                setFollowVessel(false);
+              }}
             >
               S
             </Fab>
@@ -541,9 +543,10 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
             <Fab
               size="small"
               color={selectMode === "end" ? "error" : "default"}
-              onClick={() =>
-                setSelectMode((m) => (m === "end" ? "none" : "end"))
-              }
+              onClick={() => {
+                setSelectMode((m) => (m === "end" ? "none" : "end"));
+                setFollowVessel(false);
+              }}
             >
               D
             </Fab>
