@@ -56,7 +56,7 @@ export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
             display: "flex",
             gap: 4,
             flexWrap: "wrap",
-            alignItems: "center",
+            alignItems: "flex-start",
           }}
         >
           <Info
@@ -135,20 +135,24 @@ const WindSock = ({
   direction: number;
   speed: number;
 }) => {
-  const intensity = Math.min(1, speed / 25);
-  const length = 30 + 50 * intensity;
+  const intensity = Math.min(1, speed / 25); // 0..1
+  const length = 24 + 24 * intensity; // 24..48px, mindre variasjon -> mindre layout-jitter
   const color = speed > 20 ? "#ff5252" : speed > 12 ? "#ff9800" : "#4caf50";
   return (
-    <Box sx={{ display: "flex", alignItems: "center" }}>
+    <Box sx={{ position: "relative", width: 60, height: 60 }}>
       <Box
         sx={{
+          position: "absolute",
+          bottom: 6,
+          left: "50%",
           width: 8,
           height: length,
+          marginLeft: -4,
           background: color,
           borderRadius: "4px",
           transform: `rotate(${direction}deg)`,
-          transformOrigin: "center top",
-          transition: "transform 0.6s ease, background 0.4s",
+          transformOrigin: "50% 100%",
+          transition: "transform 0.6s ease, background 0.4s, height 0.4s",
           boxShadow: "0 0 4px rgba(0,0,0,0.4)",
         }}
         title={`Vind ${speed.toFixed(1)} kn @ ${direction.toFixed(0)}°`}
