@@ -137,12 +137,12 @@ namespace SimulatorService
 
             double distanceWind = _windSpeed * (seconds / 3600.0);
             double distanceCurrent = _currentSpeed * (seconds / 3600.0);
+            // Samme koordinatkonvensjon som for skipet: 0° = nord (positiv dy), 90° = øst (positiv dx)
+            dy += distanceWind * Math.Cos(DegToRad(_windDirection));
+            dx += distanceWind * Math.Sin(DegToRad(_windDirection));
 
-            dx += distanceWind * Math.Cos(DegToRad(_windDirection));
-            dy += distanceWind * Math.Sin(DegToRad(_windDirection));
-
-            dx += distanceCurrent * Math.Cos(DegToRad(_currentDirection));
-            dy += distanceCurrent * Math.Sin(DegToRad(_currentDirection));
+            dy += distanceCurrent * Math.Cos(DegToRad(_currentDirection));
+            dx += distanceCurrent * Math.Sin(DegToRad(_currentDirection));
 
             return (dx, dy);
         }

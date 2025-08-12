@@ -15,7 +15,7 @@ namespace SimulatorService
         private readonly ILogger<Worker> _logger;
         private readonly SimulatorEngine _engine; // Denne er nå den samme singletonen som API-et bruker
         private readonly AutopilotService _autopilot;
-        private readonly TimeSpan _tickInterval = TimeSpan.FromMilliseconds(1000);
+        private readonly TimeSpan _tickInterval = TimeSpan.FromMilliseconds(1000); // 1 Hz sim oppdatering
 
         public Worker(ILogger<Worker> logger, SimulatorEngine engine, AutopilotService autopilot)
         {
@@ -118,6 +118,7 @@ namespace SimulatorService
                     }
                 });
 
+                int tick = 0;
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     _autopilot.Update();
@@ -141,6 +142,11 @@ namespace SimulatorService
                         _logger.LogDebug("Nav Update: Pos({lat:F5}, {lon:F5}) Hdg:{heading:F1}° Spd:{speed:F1}kt",
                             _engine.Latitude, _engine.Longitude, _engine.Heading, _engine.Speed);
                     }
+                    else if (tick % 5 == 0) // hvert 5. sekund gi en info-linje for synlighet
+                    {
+                        _logger.LogInformation("Posisjon: {lat:F5},{lon:F5} Heading:{heading:F0}° Fart:{speed:F1}kt", _engine.Latitude, _engine.Longitude, _engine.Heading, _engine.Speed);
+                    }
+                    tick++;
 
                     await Task.Delay(_tickInterval, stoppingToken);
                 }
