@@ -4,21 +4,16 @@ import { SetPositionDialog } from "./SetPositionDialog";
 
 interface ControlPanelProps {
   onSetCourse: (course: number) => void;
-  onSetSpeed: (speed: number) => void;
   onSetPosition: (latitude: number, longitude: number) => void;
   currentCourse?: number;
-  currentSpeed?: number;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   onSetCourse,
-  onSetSpeed,
   onSetPosition,
   currentCourse,
-  currentSpeed,
 }) => {
   const [course, setCourse] = useState(currentCourse?.toString() || "");
-  const [speed, setSpeed] = useState(currentSpeed?.toString() || "");
   const [positionDialogOpen, setPositionDialogOpen] = useState(false);
 
   const handleCourseSubmit = () => {
@@ -28,23 +23,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     }
   };
 
-  const handleSpeedSubmit = () => {
-    const speedNum = parseFloat(speed);
-    if (!isNaN(speedNum) && speedNum >= 0) {
-      onSetSpeed(speedNum);
-    }
-  };
-
   return (
     <Paper sx={{ p: 2 }}>
       <Typography variant="h6" gutterBottom>
-        Control Panel
+        Navigasjon
       </Typography>
       <Grid container spacing={2}>
         <Grid item xs={12}>
           <TextField
             fullWidth
-            label="Course (0-360°)"
+            label="Kurs (0-360°)"
             value={course}
             onChange={(e) => setCourse(e.target.value)}
             type="number"
@@ -54,7 +42,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           />
           {currentCourse !== undefined && (
             <Typography variant="caption">
-              Current Course: {currentCourse.toFixed(1)}°
+              Nåværende kurs: {currentCourse.toFixed(1)}°
             </Typography>
           )}
         </Grid>
@@ -65,34 +53,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             color="primary"
             onClick={handleCourseSubmit}
           >
-            Set Course
-          </Button>
-        </Grid>
-        <Grid item xs={12}>
-          <TextField
-            fullWidth
-            label="Speed (knots)"
-            value={speed}
-            onChange={(e) => setSpeed(e.target.value)}
-            type="number"
-            InputProps={{
-              inputProps: { min: 0 },
-            }}
-          />
-          {currentSpeed !== undefined && (
-            <Typography variant="caption">
-              Current Speed: {currentSpeed.toFixed(1)} knots
-            </Typography>
-          )}
-        </Grid>
-        <Grid item xs={12}>
-          <Button
-            fullWidth
-            variant="contained"
-            color="primary"
-            onClick={handleSpeedSubmit}
-          >
-            Set Speed
+            Sett kurs
           </Button>
         </Grid>
         <Grid item xs={12}>
@@ -102,7 +63,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             color="secondary"
             onClick={() => setPositionDialogOpen(true)}
           >
-            Set Position
+            Sett posisjon
           </Button>
         </Grid>
       </Grid>

@@ -10,6 +10,7 @@ import { VesselMap } from "./components/VesselMap";
 import { EnvironmentPanel } from "./components/EnvironmentPanel";
 import { ControlPanel } from "./components/ControlPanel";
 import { AlarmPanel } from "./components/AlarmPanel";
+import { RouteControls } from "./components/RouteControls";
 import {
   NavigationData,
   EnvironmentData,
@@ -151,9 +152,13 @@ function App() {
               <Grid item xs={12}>
                 <ControlPanel
                   onSetCourse={handleSetCourse}
-                  onSetSpeed={handleSetSpeed}
                   onSetPosition={handleSetPosition}
                   currentCourse={navigation?.headingDegrees}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <RouteControls
+                  onSetSpeed={handleSetSpeed}
                   currentSpeed={navigation?.speedKnots}
                 />
               </Grid>

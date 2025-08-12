@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -27,7 +27,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { NavigationData } from "../types/messages";
 import { RouteDialog } from "./RouteDialog";
 
-// Ship icon (CSS rotation for crisper rendering and avoiding image re-create)
+// Ship icon
 const createShipIcon = (heading: number) =>
   divIcon({
     className: "ship-icon-wrapper",
@@ -39,14 +39,31 @@ const createShipIcon = (heading: number) =>
     popupAnchor: [0, -16],
   });
 
-// Custom component to update map center when vessel position changes
-function MapCenterUpdater({ position }: { position: LatLng }) {
+function MapCenterUpdater({
+  position,
+  follow,
+  lastUserPanRef,
+}: {
+  position: LatLng;
+  follow: boolean;
+  lastUserPanRef: React.MutableRefObject<number>;
+}) {
   const map = useMap();
+  useEffect(() => {
+    const onDragStart = () => {
+      lastUserPanRef.current = Date.now();
+    };
+    map.on("dragstart", onDragStart);
+    return () => {
+      map.off("dragstart", onDragStart);
+    };
+  }, [map]);
 
   useEffect(() => {
-    map.setView(position, map.getZoom());
-  }, [map, position]);
-
+    if (!follow) return;
+    if (Date.now() - lastUserPanRef.current < 3000) return; // user panned recently
+    map.setView(position, map.getZoom(), { animate: false });
+  }, [map, position, follow, lastUserPanRef]);
   return null;
 }
 
@@ -103,6 +120,8 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
   // Panel visibility
   const [showRoutesPanel, setShowRoutesPanel] = useState(true);
   const [showCatalogPanel, setShowCatalogPanel] = useState(true);
+  const [followVessel, setFollowVessel] = useState(true);
+  const lastUserPanRef = useRef<number>(0);
   const apiBase = (import.meta as any).env?.VITE_API_BASE || ""; // relative fallback
 
   const defaultPosition: [number, number] = [59.415065, 10.493529]; // Horten v/Asko
@@ -159,10 +178,32 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
     }
   }, [routes]);
 
-  const clearRoutes = () => {
-    setRoutes([]);
-    setSelectedRouteId(null);
-  };
+  // Persist start/end & generated route
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("o-sim.startEnd");
+      if (raw) setStartEnd(JSON.parse(raw));
+      const rawGen = localStorage.getItem("o-sim.generatedRoute");
+      if (rawGen) setActiveGenerated(JSON.parse(rawGen));
+    } catch {
+      /*ignore*/
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("o-sim.startEnd", JSON.stringify(startEnd));
+    } catch {}
+  }, [startEnd]);
+  useEffect(() => {
+    try {
+      if (activeGenerated)
+        localStorage.setItem(
+          "o-sim.generatedRoute",
+          JSON.stringify(activeGenerated)
+        );
+      else localStorage.removeItem("o-sim.generatedRoute");
+    } catch {}
+  }, [activeGenerated]);
 
   // Great-circle generation between start and end (approximate) with segment length ~2nm
   const generateGreatCircle = useCallback(
@@ -215,6 +256,27 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
     },
     []
   );
+
+  // Build generated route when both points exist
+  useEffect(() => {
+    if (startEnd.start && startEnd.end) {
+      setActiveGenerated(generateGreatCircle(startEnd.start, startEnd.end, 2));
+    }
+  }, [startEnd, generateGreatCircle]);
+
+  // Fetch detail when preview selected (currently same data but future-proof)
+  useEffect(() => {
+    if (!previewRouteId) return;
+    const imported = routes.find((r) => r.id === previewRouteId);
+    if (imported) return;
+    const meta = catalog.find((c) => c.id === previewRouteId);
+    if (!meta) return;
+  }, [previewRouteId, catalog, routes]);
+
+  const clearRoutes = () => {
+    setRoutes([]);
+    setSelectedRouteId(null);
+  };
 
   // Persist start/end & generated route
   useEffect(() => {
@@ -293,10 +355,26 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
   }, [routes]);
 
   // --- Map bounds watcher & catalog fetch ---
-  const CatalogFetcher = () => {
+  const CatalogFetcher = ({
+    follow,
+    lastUserPanRef,
+  }: {
+    follow: boolean;
+    lastUserPanRef: React.MutableRefObject<number>;
+  }) => {
     const map = useMap();
+    const lastFetchRef = useRef<number>(0);
+    const lastBboxRef = useRef<string>("");
+    const fetchedOnceRef = useRef(false);
     useEffect(() => {
+      const FETCH_INTERVAL_MS = 5000; // min time between fetches
       const handler = () => {
+        const now = Date.now();
+        // Skip if throttled
+        if (now - lastFetchRef.current < FETCH_INTERVAL_MS) return;
+        const userInitiated = now - lastUserPanRef.current < 4000; // dragstart happened recently
+        // If map movement came from auto-follow (not user) and we've already fetched at least once, skip
+        if (!userInitiated && follow && fetchedOnceRef.current) return;
         const b = map.getBounds();
         const minLat = b.getSouth();
         const maxLat = b.getNorth();
@@ -305,15 +383,21 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
         const bbox = `${minLat.toFixed(6)},${minLon.toFixed(
           6
         )},${maxLat.toFixed(6)},${maxLon.toFixed(6)}`;
+        if (bbox === lastBboxRef.current && userInitiated === false) return; // nothing changed & not user
+        if (
+          bbox === lastBboxRef.current &&
+          now - lastFetchRef.current < FETCH_INTERVAL_MS * 2
+        )
+          return; // avoid rapid refetch of identical bbox even if user
+        lastBboxRef.current = bbox;
+        lastFetchRef.current = now;
+        fetchedOnceRef.current = true;
         setCatalogLoading(true);
         setCatalogError(null);
-        // Abort controller for race conditions
-        const ac = new AbortController();
-        fetch(`${apiBase}/api/routes?bbox=${bbox}`, { signal: ac.signal })
+        fetch(`${apiBase}/api/routes?bbox=${bbox}`)
           .then(async (r) => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const data = await r.json();
-            // Normalize keys (backend uses PascalCase for JSON? Actually System.Text.Json default: property names as in record ctor parameters -> Id, Name etc.)
             const norm = (data as any[]).map((d) => ({
               id: d.id || d.Id,
               name: d.name || d.Name,
@@ -341,7 +425,7 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
       return () => {
         map.off("moveend", handler);
       };
-    }, [map]);
+    }, [map, follow, lastUserPanRef]);
     return null;
   };
 
@@ -380,7 +464,10 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
           zoom={13}
           style={{ height: "100%", width: "100%" }}
         >
-          <CatalogFetcher />
+          <CatalogFetcher
+            follow={followVessel}
+            lastUserPanRef={lastUserPanRef}
+          />
           {/* Base (OSM) first */}
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -559,9 +646,30 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
               </Popup>
             </Marker>
           )}
-          <MapCenterUpdater position={new LatLng(position[0], position[1])} />
+          <MapCenterUpdater
+            position={new LatLng(position[0], position[1])}
+            follow={followVessel}
+            lastUserPanRef={lastUserPanRef}
+          />
         </MapContainer>
-        {/* Add route button */}
+        <Box
+          sx={{
+            position: "absolute",
+            top: 8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 1200,
+          }}
+        >
+          <Fab
+            size="small"
+            color={followVessel ? "primary" : "default"}
+            onClick={() => setFollowVessel((f) => !f)}
+            title={followVessel ? "Deaktiver auto-følge" : "Aktiver auto-følge"}
+          >
+            {followVessel ? "Følger" : "Fri"}
+          </Fab>
+        </Box>
         <Box
           sx={{
             position: "absolute",
