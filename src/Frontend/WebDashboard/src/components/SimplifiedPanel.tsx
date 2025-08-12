@@ -56,7 +56,9 @@ export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
             display: "flex",
             gap: 4,
             flexWrap: "wrap",
-            alignItems: "flex-start",
+            alignItems: "center",
+            position: "relative",
+            width: "100%",
           }}
         >
           <Info
@@ -71,14 +73,22 @@ export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
               1
             )} m / ${environment.wavePeriodSeconds.toFixed(0)}s`}
           />
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          {/* Windsock helt til høyre */}
+          <Box
+            sx={{
+              marginLeft: "auto",
+              width: 90,
+              height: 48,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+            }}
+          >
             <WindSock
               direction={environment.windDirectionDegrees}
               speed={environment.windSpeedKnots}
             />
-            <Typography variant="caption" sx={{ opacity: 0.6 }}>
-              Vind
-            </Typography>
           </Box>
         </Box>
       )}
@@ -127,7 +137,7 @@ function formatEta(mins: number) {
   return `${h}t ${m}m`;
 }
 
-// Enkel vindpølse komponent (ren CSS transform)
+// Vindpølse: forankret i venstre kant (fast punkt) og roterer uten å overlappe tekst
 const WindSock = ({
   direction,
   speed,
@@ -135,27 +145,48 @@ const WindSock = ({
   direction: number;
   speed: number;
 }) => {
-  const intensity = Math.min(1, speed / 25); // 0..1
-  const length = 24 + 24 * intensity; // 24..48px, mindre variasjon -> mindre layout-jitter
+  const intensity = Math.min(1, speed / 25);
+  const length = 36 + 28 * intensity; // 36..64
   const color = speed > 20 ? "#ff5252" : speed > 12 ? "#ff9800" : "#4caf50";
   return (
-    <Box sx={{ position: "relative", width: 60, height: 60 }}>
+    <Box
+      sx={{
+        position: "relative",
+        width: "100%",
+        height: 40,
+      }}
+      title={`Vind ${speed.toFixed(1)} kn @ ${direction.toFixed(0)}°`}
+    >
+      {/* Ankerpunkt / liten mast */}
       <Box
         sx={{
           position: "absolute",
-          bottom: 6,
-          left: "50%",
-          width: 8,
-          height: length,
-          marginLeft: -4,
+          left: 4,
+          top: "50%",
+          width: 6,
+          height: 6,
+          marginTop: -3,
+          borderRadius: "50%",
+          background: "#666",
+          boxShadow: "0 0 2px rgba(0,0,0,0.5)",
+        }}
+      />
+      {/* Selve vimpelen */}
+      <Box
+        sx={{
+          position: "absolute",
+          left: 7,
+          top: "50%",
+          width: length,
+          height: 12,
+          marginTop: -6,
           background: color,
-          borderRadius: "4px",
+          borderRadius: "6px 10px 10px 6px",
           transform: `rotate(${direction}deg)`,
-          transformOrigin: "50% 100%",
-          transition: "transform 0.6s ease, background 0.4s, height 0.4s",
+          transformOrigin: "0% 50%",
+          transition: "transform 0.6s ease, background 0.4s, width 0.4s",
           boxShadow: "0 0 4px rgba(0,0,0,0.4)",
         }}
-        title={`Vind ${speed.toFixed(1)} kn @ ${direction.toFixed(0)}°`}
       />
     </Box>
   );

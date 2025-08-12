@@ -40,6 +40,9 @@ function App() {
   const [arrivalPoint, setArrivalPoint] = useState<[number, number] | null>(
     null
   );
+  const [activeRoutePoints, setActiveRoutePoints] = useState<
+    [number, number][] | null
+  >(null);
   // Når vi starter med et eksplisitt startpunkt, vil første nav-melding kunne være gammel posisjon.
   // Vi lagrer ønsket start for å filtrere bort ett "teleport" hopp.
   const plannedStartRef = useRef<[number, number] | null>(null);
@@ -245,18 +248,27 @@ function App() {
     setEndPoint([lat, lon]);
   };
 
-  const canStartJourney = !!endPoint; // start optional (falls back to current or existing position)
+  const canStartJourney =
+    !!endPoint || !!(activeRoutePoints && activeRoutePoints.length > 0);
   const startJourney = async () => {
-    if (!endPoint) return;
+    if (!endPoint && !(activeRoutePoints && activeRoutePoints.length > 0))
+      return;
     try {
       const payload: any = {
-        endLatitude: endPoint[0],
-        endLongitude: endPoint[1],
+        // Hvis rute finnes, bruker vi kun routeWaypoints i stedet for endLatitude
+        endLatitude: endPoint ? endPoint[0] : undefined,
+        endLongitude: endPoint ? endPoint[1] : undefined,
         cruiseSpeedKnots: 20,
       };
       if (startPoint) {
         payload.startLatitude = startPoint[0];
         payload.startLongitude = startPoint[1];
+      }
+      if (activeRoutePoints && activeRoutePoints.length > 0) {
+        payload.routeWaypoints = activeRoutePoints.map((p) => ({
+          latitude: p[0],
+          longitude: p[1],
+        }));
       }
       await fetch(`${apiBase}/api/simulator/journey`, {
         method: "POST",
@@ -317,6 +329,7 @@ function App() {
               onSelectEnd={handleEndPoint}
               selectedStart={startPoint}
               selectedEnd={endPoint}
+              onActiveRouteChange={setActiveRoutePoints}
               journeyStart={
                 startPoint ||
                 (navigation
@@ -324,6 +337,11 @@ function App() {
                   : undefined)
               }
               journeyEnd={endPoint}
+              journeyPlannedRoute={
+                activeRoutePoints && activeRoutePoints.length > 1
+                  ? activeRoutePoints
+                  : undefined
+              }
               journeyTrack={journeyTrack}
               isJourneyRunning={
                 running &&

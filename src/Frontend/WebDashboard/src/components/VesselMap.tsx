@@ -63,9 +63,11 @@ interface VesselMapProps {
   onSelectEnd?: (lat: number, lon: number) => void;
   selectedStart?: [number, number] | null;
   selectedEnd?: [number, number] | null;
+  onActiveRouteChange?: (points: [number, number][] | null) => void;
   // Active journey (planned) start and end
   journeyStart?: [number, number] | null;
   journeyEnd?: [number, number] | null;
+  journeyPlannedRoute?: [number, number][] | null; // full rute (waypoints) for aktiv reise
   // Track of vessel positions during active journey
   journeyTrack?: [number, number][];
   isJourneyRunning?: boolean;
@@ -99,6 +101,8 @@ export const VesselMap = ({
   isJourneyRunning,
   hasArrived,
   arrivalPoint,
+  onActiveRouteChange,
+  journeyPlannedRoute,
 }: VesselMapProps) => {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -191,6 +195,14 @@ export const VesselMap = ({
       /* ignore */
     }
   }, [routes]);
+
+  // Eksponer aktiv (valgt) rute til parent for journey-start
+  useEffect(() => {
+    if (onActiveRouteChange) {
+      const r = routes.find((r) => r.id === selectedRouteId);
+      onActiveRouteChange(r ? r.points : null);
+    }
+  }, [selectedRouteId, routes, onActiveRouteChange]);
 
   // Persist start/end & generated route
   useEffect(() => {
@@ -495,14 +507,25 @@ export const VesselMap = ({
             />
           )}
           {/* Planned active journey (when running) */}
-          {journeyStart && journeyEnd && (
+          {journeyPlannedRoute && journeyPlannedRoute.length > 1 ? (
             <Polyline
-              positions={[journeyStart, journeyEnd]}
+              positions={journeyPlannedRoute}
               color={isJourneyRunning ? "#00e676" : "#757575"}
-              dashArray={isJourneyRunning ? "4 8" : "2 6"}
+              dashArray={isJourneyRunning ? "6 10" : "2 6"}
               weight={isJourneyRunning ? 5 : 3}
-              opacity={0.85}
+              opacity={0.9}
             />
+          ) : (
+            journeyStart &&
+            journeyEnd && (
+              <Polyline
+                positions={[journeyStart, journeyEnd]}
+                color={isJourneyRunning ? "#00e676" : "#757575"}
+                dashArray={isJourneyRunning ? "4 8" : "2 6"}
+                weight={isJourneyRunning ? 5 : 3}
+                opacity={0.85}
+              />
+            )
           )}
           {/* Traveled track */}
           {journeyTrack && journeyTrack.length > 1 && (

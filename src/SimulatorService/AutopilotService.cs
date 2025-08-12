@@ -11,10 +11,10 @@ namespace SimulatorService
         }
         private readonly SimulatorEngine _engine;
 
-        // Målet vi skal navigere til
-        private double _targetLatitude;
-        private double _targetLongitude;
-        private bool _hasTarget;
+        // Veipunkter (rute). Første element er aktivt mål.
+        private readonly Queue<(double lat, double lon)> _waypoints = new();
+        private bool _routeActive = false;
+        private bool _routeCompleted = false;
 
         // Match engine arrival threshold (25 m -> nm)
         private const double ArrivalThresholdNm = 25.0 / 1852.0; // ~0.0135 nm (25 m)
@@ -25,19 +25,44 @@ namespace SimulatorService
             _engine = engine;
         }
 
+        // Bakoverkompatibel: enkel destinasjon (en-veipunkt rute)
         public void SetDestination(double latitude, double longitude)
         {
-            _targetLatitude = latitude;
-            _targetLongitude = longitude;
-            _hasTarget = true;
-            // Synkroniser også motorens destinasjon slik at API status reflekterer målet
+            _waypoints.Clear();
+            _waypoints.Enqueue((latitude, longitude));
+            _routeActive = true;
+            _routeCompleted = false;
             _engine.SetDestination(latitude, longitude);
+        }
+
+        public void SetRoute(IEnumerable<(double lat, double lon)> points)
+        {
+            _waypoints.Clear();
+            foreach (var p in points)
+            {
+                _waypoints.Enqueue(p);
+            }
+            _routeActive = _waypoints.Count > 0;
+            _routeCompleted = false;
+            if (_routeActive)
+            {
+                var first = _waypoints.Peek();
+                _engine.SetDestination(first.lat, first.lon);
+            }
+            else
+            {
+                _engine.ClearDestination();
+            }
         }
 
         public (bool hasTarget, double? distanceNm) GetDestinationStatus(double currentLat, double currentLon)
         {
-            if (!_hasTarget) return (false, null);
-            double d = HaversineDistanceNm(currentLat, currentLon, _targetLatitude, _targetLongitude);
+            if (!_routeActive)
+                return (false, null);
+            if (_waypoints.Count == 0)
+                return (_routeCompleted, 0);
+            var (tlat, tlon) = _waypoints.Peek();
+            double d = HaversineDistanceNm(currentLat, currentLon, tlat, tlon);
             return (true, d);
         }
 
@@ -49,41 +74,68 @@ namespace SimulatorService
 
         public void Update()
         {
-            if (!_hasTarget) return;
-
-            double currentLat = _engine.Latitude;
-            double currentLon = _engine.Longitude;
-            double distanceNm = HaversineDistanceNm(currentLat, currentLon, _targetLatitude, _targetLongitude);
-
-            // Slow down when inside arrival zone but keep reporting target until engine flags HasArrived
-            if (distanceNm < ArrivalThresholdNm)
+            if (!_routeActive) return;
+            if (_waypoints.Count == 0)
             {
+                // Ferdig – hold stopp
                 _engine.SetDesiredSpeed(0.0);
-                if (_engine.HasArrived)
-                {
-                    _hasTarget = false; // allow UI to clear destination after engine confirms arrival
-                }
                 return;
             }
 
-            double desiredCourse = CalculateBearing(currentLat, currentLon, _targetLatitude, _targetLongitude);
-            _engine.SetDesiredHeading(desiredCourse);
-            _engine.SetDesiredSpeed(_cruisingSpeed);
+            double currentLat = _engine.Latitude;
+            double currentLon = _engine.Longitude;
+            var (tlat, tlon) = _waypoints.Peek();
+            double distanceNm = HaversineDistanceNm(currentLat, currentLon, tlat, tlon);
+
+            if (distanceNm < ArrivalThresholdNm)
+            {
+                // Nådd aktivt veipunkt
+                _waypoints.Dequeue();
+                if (_waypoints.Count == 0)
+                {
+                    // Siste veipunkt nådd – stopp
+                    _routeActive = false;
+                    _routeCompleted = true;
+                    _engine.SetDesiredSpeed(0.0);
+                    return;
+                }
+                else
+                {
+                    // Sett neste veipunkt som engine-destinasjon
+                    var next = _waypoints.Peek();
+                    _engine.SetDestination(next.lat, next.lon);
+                }
+            }
+
+            if (_routeActive && _waypoints.Count > 0)
+            {
+                var (clat, clon) = _waypoints.Peek();
+                double desiredCourse = CalculateBearing(currentLat, currentLon, clat, clon);
+                _engine.SetDesiredHeading(desiredCourse);
+                _engine.SetDesiredSpeed(_cruisingSpeed);
+            }
         }
 
         // Debug state record
-        public record AutopilotDebugState(bool HasTarget, double TargetLatitude, double TargetLongitude, double CruisingSpeed);
+        public record AutopilotDebugState(bool RouteActive, int RemainingWaypoints, bool RouteCompleted, double? TargetLatitude, double? TargetLongitude, double CruisingSpeed);
 
         public AutopilotDebugState GetDebugState()
         {
-            return new AutopilotDebugState(_hasTarget, _targetLatitude, _targetLongitude, _cruisingSpeed);
+            double? tLat = null, tLon = null;
+            if (_waypoints.Count > 0)
+            {
+                var (lat, lon) = _waypoints.Peek();
+                tLat = lat; tLon = lon;
+            }
+            return new AutopilotDebugState(_routeActive, _waypoints.Count, _routeCompleted, tLat, tLon, _cruisingSpeed);
         }
 
         public void Cancel()
         {
-            _hasTarget = false;
+            _waypoints.Clear();
+            _routeActive = false;
+            _routeCompleted = false;
             _engine.SetDesiredSpeed(0.0);
-            // Fjern destinasjon i motoren slik at status-endepunkt viser ingen aktiv reise
             _engine.ClearDestination();
         }
 

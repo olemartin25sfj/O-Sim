@@ -168,10 +168,25 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngin
         double? startLon = root.TryGetProperty("startLongitude", out var slon) ? slon.GetDouble() : null;
         double? endLat = root.TryGetProperty("endLatitude", out var elat) ? elat.GetDouble() : null;
         double? endLon = root.TryGetProperty("endLongitude", out var elon) ? elon.GetDouble() : null;
+        // Ny: routeWaypoints: [{ latitude, longitude }, ...]
+        List<(double lat, double lon)>? routePoints = null;
+        if (root.TryGetProperty("routeWaypoints", out var rwp) && rwp.ValueKind == JsonValueKind.Array)
+        {
+            routePoints = new List<(double lat, double lon)>();
+            foreach (var wp in rwp.EnumerateArray())
+            {
+                if (wp.TryGetProperty("latitude", out var wlat) && wp.TryGetProperty("longitude", out var wlon))
+                {
+                    if (wlat.ValueKind == JsonValueKind.Number && wlon.ValueKind == JsonValueKind.Number)
+                        routePoints.Add((wlat.GetDouble(), wlon.GetDouble()));
+                }
+            }
+        }
         double? cruise = root.TryGetProperty("cruiseSpeedKnots", out var c) ? c.GetDouble() : null;
 
-        if (endLat == null || endLon == null)
-            return Results.BadRequest("endLatitude og endLongitude må settes");
+        // Hvis routeWaypoints er gitt og har >=1 punkt brukes den som rute; ellers må endLat/endLon finnes.
+        if ((routePoints == null || routePoints.Count == 0) && (endLat == null || endLon == null))
+            return Results.BadRequest("Enten endLatitude/endLongitude eller routeWaypoints må settes");
 
         if (startLat.HasValue && startLon.HasValue)
         {
@@ -183,7 +198,15 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngin
             autopilot.SetCruisingSpeed(cruise.Value);
         }
 
-        autopilot.SetDestination(endLat.Value, endLon.Value);
+        if (routePoints != null && routePoints.Count > 0)
+        {
+            // Hvis startpos oppgis og første waypoint er forskjellig kan vi prepend start for full synlighet (valgfritt)
+            autopilot.SetRoute(routePoints);
+        }
+        else
+        {
+            autopilot.SetDestination(endLat!.Value, endLon!.Value);
+        }
 
         var journeyCmd = new
         {
@@ -192,7 +215,8 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngin
             startLongitude = startLon,
             endLatitude = endLat,
             endLongitude = endLon,
-            cruiseSpeedKnots = cruise
+            cruiseSpeedKnots = cruise,
+            waypoints = routePoints?.Select(p => new { latitude = p.lat, longitude = p.lon }).ToArray()
         };
         PublishCommandAndLog(nats, "sim.commands.journey", journeyCmd, "SimulatorService",
             $"Journey start end=({endLat},{endLon}) cruise={cruise}");
@@ -200,7 +224,7 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngin
         app.Logger.LogInformation("Journey started: start=({StartLat},{StartLon}) end=({EndLat},{EndLon}) cruise={Cruise}",
             startLat, startLon, endLat, endLon, cruise);
 
-        return Results.Ok(new { Message = "Journey started", endLatitude = endLat, endLongitude = endLon, cruiseSpeedKnots = cruise });
+        return Results.Ok(new { Message = "Journey started", endLatitude = endLat, endLongitude = endLon, cruiseSpeedKnots = cruise, waypoints = journeyCmd.waypoints });
     }
     catch (Exception ex)
     {
