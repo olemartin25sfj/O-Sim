@@ -10,17 +10,7 @@ import {
 import { useMapEvent } from "react-leaflet";
 import { Icon, LatLng, divIcon } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import {
-  Box,
-  Paper,
-  Fab,
-  Tooltip,
-  TextField,
-  IconButton,
-  Chip,
-  Divider,
-  CircularProgress,
-} from "@mui/material";
+import { Box, Paper, Fab, Tooltip, TextField, IconButton } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -97,32 +87,13 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
   const [activeGenerated, setActiveGenerated] = useState<
     [number, number][] | null
   >(null);
-  // Catalog (fetched) routes state
-  interface CatalogRouteMeta {
-    id: string;
-    name: string;
-    category: string;
-    minLat: number; // bounding box
-    minLon: number;
-    maxLat: number;
-    maxLon: number;
-    lengthNm: number;
-    previewPoints: [number, number][];
-  }
-  const [catalog, setCatalog] = useState<CatalogRouteMeta[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [previewRouteId, setPreviewRouteId] = useState<string | null>(null);
-  const previewRoute = useMemo(
-    () => catalog.find((c) => c.id === previewRouteId) || null,
-    [catalog, previewRouteId]
-  );
+  // Removed predefined catalog routes
   // Panel visibility
   const [showRoutesPanel, setShowRoutesPanel] = useState(true);
-  const [showCatalogPanel, setShowCatalogPanel] = useState(true);
+  // Removed catalog panel state
   const [followVessel, setFollowVessel] = useState(true);
   const lastUserPanRef = useRef<number>(0);
-  const apiBase = (import.meta as any).env?.VITE_API_BASE || ""; // relative fallback
+  // Removed apiBase (catalog feature removed)
 
   const defaultPosition: [number, number] = [59.415065, 10.493529]; // Horten v/Asko
   const position: [number, number] = navigation
@@ -264,53 +235,14 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
     }
   }, [startEnd, generateGreatCircle]);
 
-  // Fetch detail when preview selected (currently same data but future-proof)
-  useEffect(() => {
-    if (!previewRouteId) return;
-    const imported = routes.find((r) => r.id === previewRouteId);
-    if (imported) return;
-    const meta = catalog.find((c) => c.id === previewRouteId);
-    if (!meta) return;
-  }, [previewRouteId, catalog, routes]);
+  // Removed preview route detail effect
 
   const clearRoutes = () => {
     setRoutes([]);
     setSelectedRouteId(null);
   };
 
-  // Persist start/end & generated route
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("o-sim.startEnd");
-      if (raw) setStartEnd(JSON.parse(raw));
-      const rawGen = localStorage.getItem("o-sim.generatedRoute");
-      if (rawGen) setActiveGenerated(JSON.parse(rawGen));
-    } catch {
-      /*ignore*/
-    }
-  }, []);
-  useEffect(() => {
-    try {
-      localStorage.setItem("o-sim.startEnd", JSON.stringify(startEnd));
-    } catch {}
-  }, [startEnd]);
-  useEffect(() => {
-    try {
-      if (activeGenerated)
-        localStorage.setItem(
-          "o-sim.generatedRoute",
-          JSON.stringify(activeGenerated)
-        );
-      else localStorage.removeItem("o-sim.generatedRoute");
-    } catch {}
-  }, [activeGenerated]);
-
-  // Build generated route when both points exist
-  useEffect(() => {
-    if (startEnd.start && startEnd.end) {
-      setActiveGenerated(generateGreatCircle(startEnd.start, startEnd.end, 2));
-    }
-  }, [startEnd, generateGreatCircle]);
+  // (Removed duplicate persistence & build effect block)
 
   // Map click for selecting start/destination
   const ClickHandler = () => {
@@ -354,107 +286,11 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
     });
   }, [routes]);
 
-  // --- Map bounds watcher & catalog fetch ---
-  const CatalogFetcher = ({
-    follow,
-    lastUserPanRef,
-  }: {
-    follow: boolean;
-    lastUserPanRef: React.MutableRefObject<number>;
-  }) => {
-    const map = useMap();
-    const lastFetchRef = useRef<number>(0);
-    const lastBboxRef = useRef<string>("");
-    const fetchedOnceRef = useRef(false);
-    useEffect(() => {
-      const FETCH_INTERVAL_MS = 5000; // min time between fetches
-      const handler = () => {
-        const now = Date.now();
-        // Skip if throttled
-        if (now - lastFetchRef.current < FETCH_INTERVAL_MS) return;
-        const userInitiated = now - lastUserPanRef.current < 4000; // dragstart happened recently
-        // If map movement came from auto-follow (not user) and we've already fetched at least once, skip
-        if (!userInitiated && follow && fetchedOnceRef.current) return;
-        const b = map.getBounds();
-        const minLat = b.getSouth();
-        const maxLat = b.getNorth();
-        const minLon = b.getWest();
-        const maxLon = b.getEast();
-        const bbox = `${minLat.toFixed(6)},${minLon.toFixed(
-          6
-        )},${maxLat.toFixed(6)},${maxLon.toFixed(6)}`;
-        if (bbox === lastBboxRef.current && userInitiated === false) return; // nothing changed & not user
-        if (
-          bbox === lastBboxRef.current &&
-          now - lastFetchRef.current < FETCH_INTERVAL_MS * 2
-        )
-          return; // avoid rapid refetch of identical bbox even if user
-        lastBboxRef.current = bbox;
-        lastFetchRef.current = now;
-        fetchedOnceRef.current = true;
-        setCatalogLoading(true);
-        setCatalogError(null);
-        fetch(`${apiBase}/api/routes?bbox=${bbox}`)
-          .then(async (r) => {
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const data = await r.json();
-            const norm = (data as any[]).map((d) => ({
-              id: d.id || d.Id,
-              name: d.name || d.Name,
-              category: d.category || d.Category,
-              minLat: d.minLat ?? d.MinLat,
-              minLon: d.minLon ?? d.MinLon,
-              maxLat: d.maxLat ?? d.MaxLat,
-              maxLon: d.maxLon ?? d.MaxLon,
-              lengthNm: d.lengthNm ?? d.LengthNm,
-              previewPoints: (d.previewPoints || d.PreviewPoints) as [
-                number,
-                number
-              ][],
-            }));
-            setCatalog(norm);
-          })
-          .catch((e) => {
-            if (e.name !== "AbortError") setCatalogError(e.message);
-          })
-          .finally(() => setCatalogLoading(false));
-      };
-      // Initial fetch
-      handler();
-      map.on("moveend", handler);
-      return () => {
-        map.off("moveend", handler);
-      };
-    }, [map, follow, lastUserPanRef]);
-    return null;
-  };
+  // (Removed catalog fetcher)
 
-  // Fetch detail when preview selected (currently same data but future-proof)
-  useEffect(() => {
-    if (!previewRouteId) return;
-    // If already imported, no need for detail
-    const imported = routes.find((r) => r.id === previewRouteId);
-    if (imported) return;
-    const meta = catalog.find((c) => c.id === previewRouteId);
-    if (!meta) return;
-    // Optionally could fetch /api/routes/{id} if we had simplified preview vs full
-  }, [previewRouteId, catalog, routes]);
+  // (Removed preview detail effect)
 
-  const importCatalogRoute = (id: string) => {
-    const meta = catalog.find((c) => c.id === id);
-    if (!meta) return;
-    if (routes.some((r) => r.id === id)) return; // already
-    setRoutes((rs) => [
-      ...rs,
-      {
-        id: meta.id,
-        name: meta.name,
-        points: meta.previewPoints,
-        source: "shipping-lane",
-      },
-    ]);
-    setSelectedRouteId(id);
-  };
+  // (Removed importCatalogRoute)
 
   return (
     <Paper sx={{ height: "100%", p: 1 }}>
@@ -464,10 +300,7 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
           zoom={13}
           style={{ height: "100%", width: "100%" }}
         >
-          <CatalogFetcher
-            follow={followVessel}
-            lastUserPanRef={lastUserPanRef}
-          />
+          {/* CatalogFetcher removed */}
           {/* Base (OSM) first */}
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -591,16 +424,7 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
               opacity={0.9}
             />
           )}
-          {/* Preview (not yet imported) */}
-          {previewRoute && !routes.some((r) => r.id === previewRoute.id) && (
-            <Polyline
-              positions={previewRoute.previewPoints}
-              color="#8e24aa"
-              weight={4}
-              opacity={0.6}
-              dashArray="8 8"
-            />
-          )}
+          {/* Preview removed */}
           {startEnd.start && (
             <Marker
               position={startEnd.start}
@@ -885,131 +709,7 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
           </Fab>
         </Box>
       )}
-      {/* Catalog side panel (always visible) */}
-      <Box
-        sx={{
-          position: "absolute",
-          top: 8,
-          right: 8,
-          width: 300,
-          maxHeight: "75%",
-          display: "flex",
-          flexDirection: "column",
-          gap: 0.5,
-          pointerEvents: "auto",
-          zIndex: 1000,
-        }}
-      >
-        {showCatalogPanel && (
-          <Paper
-            sx={{
-              p: 1,
-              bgcolor: "rgba(0,0,0,0.65)",
-              color: "#fff",
-              overflowY: "auto",
-            }}
-          >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <strong style={{ flex: 1 }}>Tilgjengelige ruter</strong>
-              {catalogLoading && <CircularProgress size={16} color="inherit" />}
-            </Box>
-            {catalogError && (
-              <Box sx={{ mt: 1, fontSize: 12, color: "#ffb74d" }}>
-                Feil: {catalogError}
-              </Box>
-            )}
-            <Divider sx={{ my: 1, borderColor: "rgba(255,255,255,0.2)" }} />
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
-              {catalog.map((c) => {
-                const imported = routes.some((r) => r.id === c.id);
-                const previewing = previewRouteId === c.id;
-                return (
-                  <Paper
-                    key={c.id}
-                    sx={{
-                      p: 0.75,
-                      bgcolor: previewing
-                        ? "rgba(142,36,170,0.6)"
-                        : "rgba(255,255,255,0.08)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 0.5,
-                    }}
-                    elevation={0}
-                  >
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 0.5,
-                        cursor: "pointer",
-                      }}
-                      onClick={() =>
-                        setPreviewRouteId((id) => (id === c.id ? null : c.id))
-                      }
-                    >
-                      <span style={{ fontWeight: 500 }}>{c.name}</span>
-                      <Chip
-                        size="small"
-                        label={c.category}
-                        sx={{ ml: "auto", bgcolor: "#3949ab", color: "#fff" }}
-                      />
-                    </Box>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        fontSize: 12,
-                        opacity: 0.85,
-                      }}
-                    >
-                      <span>{c.lengthNm.toFixed(1)} nm</span>
-                      <Box sx={{ ml: "auto", display: "flex", gap: 0.5 }}>
-                        {!imported && (
-                          <Fab
-                            size="small"
-                            color="primary"
-                            sx={{ width: 32, height: 32 }}
-                            onClick={() => importCatalogRoute(c.id)}
-                          >
-                            +
-                          </Fab>
-                        )}
-                        {imported && (
-                          <Chip
-                            size="small"
-                            label="Importert"
-                            color="success"
-                            sx={{ fontSize: 10 }}
-                          />
-                        )}
-                      </Box>
-                    </Box>
-                  </Paper>
-                );
-              })}
-              {catalog.length === 0 && !catalogLoading && !catalogError && (
-                <span style={{ fontSize: 12, opacity: 0.7 }}>
-                  Ingen ruter i utsnittet.
-                </span>
-              )}
-            </Box>
-          </Paper>
-        )}
-        <Fab
-          size="small"
-          sx={{
-            alignSelf: "flex-end",
-            bgcolor: showCatalogPanel ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.4)",
-            color: "#fff",
-          }}
-          onClick={() => setShowCatalogPanel((v) => !v)}
-          title={showCatalogPanel ? "Skjul rute-katalog" : "Vis rute-katalog"}
-        >
-          {showCatalogPanel ? "−" : "+"}
-        </Fab>
-      </Box>
+      {/* Catalog panel removed */}
     </Paper>
   );
 };
