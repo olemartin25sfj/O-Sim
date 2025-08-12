@@ -32,8 +32,18 @@ function App() {
   const apiBase =
     window.location.port === "3000" ? `http://${window.location.hostname}` : "";
 
+  // start/end + cruise speed state
+  const [startPoint, setStartPoint] = useState<[number, number] | null>(null);
+  const [endPoint, setEndPoint] = useState<[number, number] | null>(null);
+  const [cruiseSpeed, setCruiseSpeed] = useState<number>(12);
+  const [journeyStarting, setJourneyStarting] = useState(false);
+  const [lastJourneyMsg, setLastJourneyMsg] = useState<string | null>(null);
+
   useEffect(() => {
-    const socket = new WebSocket("ws://localhost/ws/nav");
+    const wsBase = `${window.location.protocol === "https:" ? "wss" : "ws"}://${
+      window.location.host
+    }`;
+    const socket = new WebSocket(`${wsBase}/ws/nav`);
 
     socket.onmessage = (event) => {
       const message: WebSocketMessage<any> = JSON.parse(event.data);
@@ -89,6 +99,45 @@ function App() {
       socket.close();
     };
   }, []);
+
+  const handleStartPoint = (lat: number, lon: number) => {
+    setStartPoint([lat, lon]);
+  };
+  const handleEndPoint = (lat: number, lon: number) => {
+    setEndPoint([lat, lon]);
+  };
+
+  const canStartJourney = !!endPoint; // start optional (falls back to current or existing position)
+  const startJourney = async () => {
+    if (!endPoint) return;
+    setJourneyStarting(true);
+    try {
+      const payload: any = {
+        endLatitude: endPoint[0],
+        endLongitude: endPoint[1],
+        cruiseSpeedKnots: cruiseSpeed,
+      };
+      if (startPoint) {
+        payload.startLatitude = startPoint[0];
+        payload.startLongitude = startPoint[1];
+      }
+      const res = await fetch(`${apiBase}/api/simulator/journey`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setLastJourneyMsg("Journey started");
+      } else {
+        setLastJourneyMsg("Journey failed");
+      }
+    } catch (e) {
+      setLastJourneyMsg("Journey error");
+    } finally {
+      setJourneyStarting(false);
+      setTimeout(() => setLastJourneyMsg(null), 4000);
+    }
+  };
 
   const handleSetCourse = async (course: number) => {
     try {
@@ -148,7 +197,13 @@ function App() {
       <Container maxWidth={false} sx={{ height: "100vh", py: 2 }}>
         <Grid container spacing={2} sx={{ height: "100%" }}>
           <Grid item xs={12} md={8} sx={{ height: "70vh" }}>
-            <VesselMap navigation={navigation} />
+            <VesselMap
+              navigation={navigation}
+              onSelectStart={handleStartPoint}
+              onSelectEnd={handleEndPoint}
+              selectedStart={startPoint}
+              selectedEnd={endPoint}
+            />
           </Grid>
           <Grid item xs={12} md={4} sx={{ height: "70vh", overflow: "auto" }}>
             <Grid container spacing={2}>
@@ -163,6 +218,12 @@ function App() {
                 <RouteControls
                   onSetSpeed={handleSetSpeed}
                   currentSpeed={navigation?.speedKnots}
+                  cruiseSpeed={cruiseSpeed}
+                  onCruiseSpeedChange={setCruiseSpeed}
+                  canStartJourney={canStartJourney}
+                  onStartJourney={startJourney}
+                  journeyStarting={journeyStarting}
+                  lastJourneyMsg={lastJourneyMsg}
                 />
               </Grid>
               <Grid item xs={12}>

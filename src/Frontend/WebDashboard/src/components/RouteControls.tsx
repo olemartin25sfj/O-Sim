@@ -22,6 +22,12 @@ interface RouteControlsProps {
   onStopRoute?: () => void;
   routeActive?: boolean;
   selectedRouteName?: string | null;
+  cruiseSpeed?: number;
+  onCruiseSpeedChange?: (v: number) => void;
+  canStartJourney?: boolean;
+  onStartJourney?: () => void;
+  journeyStarting?: boolean;
+  lastJourneyMsg?: string | null;
 }
 
 export const RouteControls: React.FC<RouteControlsProps> = ({
@@ -32,6 +38,12 @@ export const RouteControls: React.FC<RouteControlsProps> = ({
   onStopRoute,
   routeActive = false,
   selectedRouteName,
+  cruiseSpeed = 12,
+  onCruiseSpeedChange,
+  canStartJourney = false,
+  onStartJourney,
+  journeyStarting = false,
+  lastJourneyMsg,
 }) => {
   const [speed, setSpeed] = useState<number>(currentSpeed ?? 0);
   const [internalActive, setInternalActive] = useState(routeActive);
@@ -208,6 +220,47 @@ export const RouteControls: React.FC<RouteControlsProps> = ({
         @keyframes greenPulse { 0%,100% { box-shadow: 0 0 8px 2px rgba(0,255,120,0.6),0 0 20px 8px rgba(0,255,120,0.25);} 50% { box-shadow:0 0 14px 4px rgba(0,255,160,0.95),0 0 30px 12px rgba(0,255,160,0.35);} }
         @keyframes redAlert { 0%,100% { box-shadow:0 0 6px 1px rgba(255,60,60,0.6),0 0 14px 6px rgba(255,60,60,0.25);} 50% { box-shadow:0 0 14px 4px rgba(255,80,80,0.95),0 0 26px 10px rgba(255,80,80,0.4);} }
       `}</style>
+      {/* Journey Section */}
+      <Box sx={{ mt: 4 }}>
+        <Typography variant="subtitle2" gutterBottom>
+          Journey
+        </Typography>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
+          <Box sx={{ fontSize: 13, opacity: 0.75 }}>Cruise</Box>
+          <Slider
+            min={0}
+            max={maxSpeed}
+            step={0.5}
+            value={cruiseSpeed}
+            onChange={(_, v) => onCruiseSpeedChange?.(v as number)}
+            sx={{ flex: 1 }}
+            size="small"
+          />
+          <Box
+            sx={{
+              width: 46,
+              textAlign: "right",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {cruiseSpeed.toFixed(1)}
+          </Box>
+        </Stack>
+        <Button
+          variant="contained"
+          size="small"
+          disabled={!canStartJourney || journeyStarting}
+          onClick={onStartJourney}
+          sx={{ mr: 1 }}
+        >
+          {journeyStarting ? "Starter..." : "Start Journey"}
+        </Button>
+        {lastJourneyMsg && (
+          <Typography variant="caption" sx={{ ml: 1, opacity: 0.8 }}>
+            {lastJourneyMsg}
+          </Typography>
+        )}
+      </Box>
     </Paper>
   );
 };

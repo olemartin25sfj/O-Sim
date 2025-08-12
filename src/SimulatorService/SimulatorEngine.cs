@@ -28,6 +28,8 @@ namespace SimulatorService
         // Autopilot status
         public bool HasDestination => _targetLat.HasValue && _targetLon.HasValue;
         public bool HasArrived { get; private set; } = false;
+        public double? TargetLatitude => _targetLat;
+        public double? TargetLongitude => _targetLon;
 
         // Konstanter
         private const double BaseTurnRate = 1.0;        // grader per sekund

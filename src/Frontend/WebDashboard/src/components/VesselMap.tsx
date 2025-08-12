@@ -59,6 +59,10 @@ function MapCenterUpdater({
 
 interface VesselMapProps {
   navigation: NavigationData | null;
+  onSelectStart?: (lat: number, lon: number) => void;
+  onSelectEnd?: (lat: number, lon: number) => void;
+  selectedStart?: [number, number] | null;
+  selectedEnd?: [number, number] | null;
 }
 
 interface Route {
@@ -74,7 +78,13 @@ interface StartEndState {
   end?: [number, number];
 }
 
-export const VesselMap = ({ navigation }: VesselMapProps) => {
+export const VesselMap = ({
+  navigation,
+  onSelectStart,
+  onSelectEnd,
+  selectedStart,
+  selectedEnd,
+}: VesselMapProps) => {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -83,7 +93,7 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
   const [selectMode, setSelectMode] = useState<"none" | "start" | "end">(
     "none"
   );
-  const [startEnd, setStartEnd] = useState<StartEndState>({});
+  const [startEnd, setStartEnd] = useState<StartEndState>({}); // retained for local persistence fallback
   const [activeGenerated, setActiveGenerated] = useState<
     [number, number][] | null
   >(null);
@@ -249,11 +259,13 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
     useMapEvent("click", (e) => {
       if (selectMode === "none") return;
       const latlng: [number, number] = [e.latlng.lat, e.latlng.lng];
-      setStartEnd((prev) =>
-        selectMode === "start"
-          ? { ...prev, start: latlng }
-          : { ...prev, end: latlng }
-      );
+      if (selectMode === "start") {
+        onSelectStart?.(latlng[0], latlng[1]);
+        setStartEnd((prev) => ({ ...prev, start: latlng }));
+      } else if (selectMode === "end") {
+        onSelectEnd?.(latlng[0], latlng[1]);
+        setStartEnd((prev) => ({ ...prev, end: latlng }));
+      }
       setSelectMode("none");
     });
     return null;
@@ -425,9 +437,9 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
             />
           )}
           {/* Preview removed */}
-          {startEnd.start && (
+          {(selectedStart || startEnd.start) && (
             <Marker
-              position={startEnd.start}
+              position={selectedStart || (startEnd.start as [number, number])}
               icon={
                 new Icon({
                   iconUrl: "/marker-start.svg",
@@ -437,9 +449,9 @@ export const VesselMap = ({ navigation }: VesselMapProps) => {
               }
             />
           )}
-          {startEnd.end && (
+          {(selectedEnd || startEnd.end) && (
             <Marker
-              position={startEnd.end}
+              position={selectedEnd || (startEnd.end as [number, number])}
               icon={
                 new Icon({
                   iconUrl: "/marker-end.svg",

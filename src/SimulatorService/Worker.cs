@@ -17,11 +17,11 @@ namespace SimulatorService
         private readonly AutopilotService _autopilot;
         private readonly TimeSpan _tickInterval = TimeSpan.FromMilliseconds(1000);
 
-        public Worker(ILogger<Worker> logger, SimulatorEngine engine)
+        public Worker(ILogger<Worker> logger, SimulatorEngine engine, AutopilotService autopilot)
         {
             _logger = logger;
             _engine = engine; // Bruk DI-singleton
-            _autopilot = new AutopilotService(_engine);
+            _autopilot = autopilot;
 
             // Initialiser bare hvis posisjon ikke allerede er satt (lat = 0 && lon = 0 antas som ikke initialisert)
             if (Math.Abs(_engine.Latitude) < 0.0001 && Math.Abs(_engine.Longitude) < 0.0001)

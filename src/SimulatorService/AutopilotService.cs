@@ -17,7 +17,7 @@ namespace SimulatorService
         private bool _hasTarget;
 
         private const double ArrivalThresholdNm = 0.05; // 50 meter
-        private const double CruisingSpeed = 15.0; // Høy fart for rask simulering
+        private double _cruisingSpeed = 15.0; // kan justeres via API
 
         public AutopilotService(SimulatorEngine engine)
         {
@@ -29,6 +29,19 @@ namespace SimulatorService
             _targetLatitude = latitude;
             _targetLongitude = longitude;
             _hasTarget = true;
+        }
+
+        public (bool hasTarget, double? distanceNm) GetDestinationStatus(double currentLat, double currentLon)
+        {
+            if (!_hasTarget) return (false, null);
+            double d = HaversineDistanceNm(currentLat, currentLon, _targetLatitude, _targetLongitude);
+            return (true, d);
+        }
+
+        public void SetCruisingSpeed(double speedKnots)
+        {
+            if (speedKnots < 0) speedKnots = 0;
+            _cruisingSpeed = speedKnots;
         }
 
         public void Update()
@@ -49,7 +62,7 @@ namespace SimulatorService
 
             double desiredCourse = CalculateBearing(currentLat, currentLon, _targetLatitude, _targetLongitude);
             _engine.SetDesiredHeading(desiredCourse);
-            _engine.SetDesiredSpeed(CruisingSpeed);
+            _engine.SetDesiredSpeed(_cruisingSpeed);
         }
 
         private static double HaversineDistanceNm(double lat1, double lon1, double lat2, double lon2)
