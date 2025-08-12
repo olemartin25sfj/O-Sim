@@ -10,10 +10,10 @@ interface SimplifiedPanelProps {
   navigation: NavigationData | null;
   destination: DestinationStatus | null;
   environment?: EnvironmentData | null;
-  onStart: () => void; // start journey with fixed speed
-  onStop: () => void; // manual stop
+  onStart: () => void;
+  onStop: () => void;
   running: boolean;
-  canStartJourney: boolean; // has destination selected
+  canStartJourney: boolean;
 }
 
 export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
@@ -33,10 +33,12 @@ export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
   return (
     <Paper sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
       <Typography variant="h6">Fartøy</Typography>
+      {/* Rad 1: kjerne telemetri */}
       <Box sx={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
         <Info label="Fart" value={`${speed.toFixed(1)} kn`} />
         <Info label="Kurs" value={`${heading.toFixed(1)}°`} />
         <Info label="Posisjon" value={`${lat}, ${lon}`} />
+        {destination?.hasArrived && <Info label="Status" value="Ankommet" />}
         {destination?.hasDestination && !destination?.hasArrived && (
           <Info
             label="Distanse"
@@ -46,37 +48,40 @@ export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
         {destination?.etaMinutes && destination?.etaMinutes > 0 && (
           <Info label="ETA" value={formatEta(destination.etaMinutes)} />
         )}
-        {destination?.hasArrived && <Info label="Status" value="Ankommet" />}
-        {environment && (
+      </Box>
+      {/* Rad 2: miljø */}
+      {environment && (
+        <Box
+          sx={{
+            display: "flex",
+            gap: 4,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <Info
             label="Vind"
             value={`${environment.windSpeedKnots.toFixed(
               1
             )} kn @ ${environment.windDirectionDegrees.toFixed(0)}°`}
           />
-        )}
-        {environment && (
           <Info
             label="Bølger"
             value={`${environment.waveHeightMeters.toFixed(
               1
             )} m / ${environment.wavePeriodSeconds.toFixed(0)}s`}
           />
-        )}
-      </Box>
-      {environment && (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <WindSock
-            direction={environment.windDirectionDegrees}
-            speed={environment.windSpeedKnots}
-          />
-          <Typography variant="caption" sx={{ opacity: 0.7 }}>
-            Vindpølse peker TIL hvor vinden blåser (retning{" "}
-            {environment.windDirectionDegrees.toFixed(0)}°)
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <WindSock
+              direction={environment.windDirectionDegrees}
+              speed={environment.windSpeedKnots}
+            />
+            <Typography variant="caption" sx={{ opacity: 0.6 }}>
+              Vind
+            </Typography>
+          </Box>
         </Box>
       )}
-
       <Stack direction="row" spacing={2}>
         <Button
           variant="contained"
@@ -130,11 +135,11 @@ const WindSock = ({
   direction: number;
   speed: number;
 }) => {
-  const intensity = Math.min(1, speed / 25); // scale 0..1 (25 kn cap)
-  const length = 30 + 50 * intensity; // px
+  const intensity = Math.min(1, speed / 25);
+  const length = 30 + 50 * intensity;
   const color = speed > 20 ? "#ff5252" : speed > 12 ? "#ff9800" : "#4caf50";
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+    <Box sx={{ display: "flex", alignItems: "center" }}>
       <Box
         sx={{
           width: 8,
