@@ -1,7 +1,8 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using SimulatorService;
 using OSim.Shared.Messages;
+using SimulatorService;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,12 @@ builder.Services.AddSingleton(simulatorEngine);
 
 // Add Worker with SimulatorEngine
 builder.Services.AddHostedService<Worker>();
+
+// Felles JSON options – gjør navn case-insensitive slik at frontendens camelCase (targetSpeedKnots) matches TargetSpeedKnots
+var jsonOptions = new JsonSerializerOptions
+{
+    PropertyNameCaseInsensitive = true
+};
 
 var app = builder.Build();
 
@@ -25,7 +32,7 @@ app.MapPost("/api/simulator/position", async (HttpContext context, SimulatorEngi
     {
         using var reader = new StreamReader(context.Request.Body);
         var body = await reader.ReadToEndAsync();
-        var command = System.Text.Json.JsonSerializer.Deserialize<SetPositionCommand>(body);
+        var command = JsonSerializer.Deserialize<SetPositionCommand>(body, jsonOptions);
 
         if (command == null)
             return Results.BadRequest("Invalid command format");
@@ -45,7 +52,7 @@ app.MapPost("/api/simulator/course", async (HttpContext context, SimulatorEngine
     {
         using var reader = new StreamReader(context.Request.Body);
         var body = await reader.ReadToEndAsync();
-        var command = System.Text.Json.JsonSerializer.Deserialize<SetCourseCommand>(body);
+        var command = JsonSerializer.Deserialize<SetCourseCommand>(body, jsonOptions);
 
         if (command == null)
             return Results.BadRequest("Invalid command format");
@@ -65,16 +72,19 @@ app.MapPost("/api/simulator/speed", async (HttpContext context, SimulatorEngine 
     {
         using var reader = new StreamReader(context.Request.Body);
         var body = await reader.ReadToEndAsync();
-        var command = System.Text.Json.JsonSerializer.Deserialize<SetSpeedCommand>(body);
+        var command = JsonSerializer.Deserialize<SetSpeedCommand>(body, jsonOptions);
 
         if (command == null)
             return Results.BadRequest("Invalid command format");
 
         engine.SetDesiredSpeed(command.TargetSpeedKnots);
+        app.Logger.LogInformation("Desired speed set to {Speed} knots", command.TargetSpeedKnots);
         return Results.Ok(new { Message = $"Speed set to {command.TargetSpeedKnots}" });
     }
     catch (Exception ex)
     {
         return Results.BadRequest(ex.Message);
     }
-}); app.Run("http://0.0.0.0:5001");
+});
+
+app.Run("http://0.0.0.0:5001");

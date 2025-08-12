@@ -13,25 +13,28 @@ namespace SimulatorService
     public class Worker : BackgroundService
     {
         private readonly ILogger<Worker> _logger;
-        private readonly SimulatorEngine _engine;
+        private readonly SimulatorEngine _engine; // Denne er nå den samme singletonen som API-et bruker
         private readonly AutopilotService _autopilot;
         private readonly TimeSpan _tickInterval = TimeSpan.FromMilliseconds(1000);
 
-        public Worker(ILogger<Worker> logger)
+        public Worker(ILogger<Worker> logger, SimulatorEngine engine)
         {
             _logger = logger;
-            _engine = new SimulatorEngine();
+            _engine = engine; // Bruk DI-singleton
             _autopilot = new AutopilotService(_engine);
 
-            // Sett startposisjon (Horten havn)
-            _engine.SetInitialPosition(59.4167, 10.4833);
+            // Initialiser bare hvis posisjon ikke allerede er satt (lat = 0 && lon = 0 antas som ikke initialisert)
+            if (Math.Abs(_engine.Latitude) < 0.0001 && Math.Abs(_engine.Longitude) < 0.0001)
+            {
+                _engine.SetInitialPosition(59.4167, 10.4833); // Horten havn
+            }
 
-            // Sett miljøforhold (vind, strøm)
+            // (Re)sett et tilfeldig miljø – API / env updates vil overskrive fortløpende
             _engine.SetEnvironment(
-                windSpeed: Random.Shared.NextDouble() * 10.0,      // 0-10 knop vind
-                windDirection: Random.Shared.NextDouble() * 360.0, // tilfeldig retning
-                currentSpeed: Random.Shared.NextDouble() * 2.0,    // 0-2 knop strøm
-                currentDirection: Random.Shared.NextDouble() * 360.0); // tilfeldig retning
+                windSpeed: Random.Shared.NextDouble() * 10.0,
+                windDirection: Random.Shared.NextDouble() * 360.0,
+                currentSpeed: Random.Shared.NextDouble() * 2.0,
+                currentDirection: Random.Shared.NextDouble() * 360.0);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
