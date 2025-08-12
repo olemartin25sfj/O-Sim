@@ -86,7 +86,7 @@ app.Map("/ws/nav", async context =>
         using var ws = await context.WebSockets.AcceptWebSocketAsync();
 
         var cts = new CancellationTokenSource();
-        var sub = nats.SubscribeAsync("sim.sensors.nav", (s, a) =>
+        var subNav = nats.SubscribeAsync("sim.sensors.nav", (s, a) =>
         {
             try
             {
@@ -99,6 +99,22 @@ app.Map("/ws/nav", async context =>
             {
                 // Unngå spam – logg én gang og lukk
                 app.Logger.LogDebug("WebSocket send feilet: {Message}", ex.Message);
+                cts.Cancel();
+            }
+        });
+
+        var subEnv = nats.SubscribeAsync("sim.sensors.env", (s, a) =>
+        {
+            try
+            {
+                if (ws.State != System.Net.WebSockets.WebSocketState.Open) return;
+                var json = Encoding.UTF8.GetString(a.Message.Data);
+                var buffer = Encoding.UTF8.GetBytes(json);
+                _ = ws.SendAsync(buffer, System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token);
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogDebug("WebSocket send feilet (env): {Message}", ex.Message);
                 cts.Cancel();
             }
         });
@@ -125,7 +141,8 @@ app.Map("/ws/nav", async context =>
         finally
         {
             cts.Cancel();
-            try { sub.Unsubscribe(); } catch { }
+            try { subNav.Unsubscribe(); } catch { }
+            try { subEnv.Unsubscribe(); } catch { }
         }
     }
     else

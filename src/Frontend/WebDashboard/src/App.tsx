@@ -135,6 +135,28 @@ function App() {
           return;
         }
 
+        // Format B2: raw PascalCase environment (no topic)
+        if (
+          typeof parsed?.WindSpeedKnots === "number" &&
+          typeof parsed?.WindDirectionDegrees === "number" &&
+          typeof parsed?.WaveHeightMeters === "number"
+        ) {
+          const e = parsed;
+          const env: EnvironmentData = {
+            timestampUtc: e.TimestampUtc || new Date().toISOString(),
+            mode: (e.Mode || "Dynamic") as any,
+            windSpeedKnots: e.WindSpeedKnots,
+            windDirectionDegrees: e.WindDirectionDegrees,
+            currentSpeedKnots: e.CurrentSpeedKnots ?? 0,
+            currentDirectionDegrees: e.CurrentDirectionDegrees ?? 0,
+            waveHeightMeters: e.WaveHeightMeters,
+            waveDirectionDegrees: e.WaveDirectionDegrees ?? 0,
+            wavePeriodSeconds: e.WavePeriodSeconds ?? 0,
+          };
+          setEnvironment(env);
+          return;
+        }
+
         // Format B: rå nav-record fra gateway (PascalCase)
         if (
           typeof parsed?.Latitude === "number" &&
