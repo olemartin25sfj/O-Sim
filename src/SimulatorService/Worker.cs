@@ -154,6 +154,25 @@ namespace SimulatorService
                     }
                 });
 
+                // Abonner på ankerkommandoer
+                var anchorSubscription = natsConnection.SubscribeAsync("sim.commands.anchor", (sender, args) =>
+                {
+                    try
+                    {
+                        var json = System.Text.Encoding.UTF8.GetString(args.Message.Data);
+                        var command = JsonSerializer.Deserialize<SetAnchorCommand>(json);
+                        if (command != null)
+                        {
+                            _engine.SetAnchored(command.IsAnchored);
+                            _logger.LogInformation($"Anker {(command.IsAnchored ? "senket" : "heist")}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Feil ved behandling av ankerkommando: {ex.Message}");
+                    }
+                });
+
                 int tick = 0;
                 while (!stoppingToken.IsCancellationRequested)
                 {
@@ -166,7 +185,8 @@ namespace SimulatorService
                         Longitude: _engine.Longitude,
                         SpeedKnots: _engine.Speed,
                         HeadingDegrees: _engine.Heading,
-                        CourseOverGroundDegrees: _engine.Heading // placeholder dersom COG ikke beregnes separat
+                        CourseOverGroundDegrees: _engine.Heading, // placeholder dersom COG ikke beregnes separat
+                        IsAnchored: _engine.IsAnchored
                     );
 
                     var json = JsonSerializer.Serialize(navigationData);

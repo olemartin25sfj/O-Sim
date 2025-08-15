@@ -29,11 +29,18 @@ namespace SimulatorService
         private double _rudderAngle = 0.0; // grader, -35 til +35
         private double _thrustPercent = 0.0; // 0-100%
 
+        // Anker-modus
+        private bool _isAnchored = false;
+        private double _anchorLat = 0.0;
+        private double _anchorLon = 0.0;
+        private const double MaxAnchorDrift = 20.0; // meter fra ankerposisjon
+
         // Autopilot status
         public bool HasDestination => _targetLat.HasValue && _targetLon.HasValue;
         public bool HasArrived { get; private set; } = false;
         public double? TargetLatitude => _targetLat;
         public double? TargetLongitude => _targetLon;
+        public bool IsAnchored => _isAnchored;
 
         // Konstanter
         private const double BaseTurnRate = 1.0;        // grader per sekund
@@ -100,6 +107,17 @@ namespace SimulatorService
             _thrustPercent = Math.Clamp(percent, 0.0, 100.0);
         }
 
+        public void SetAnchored(bool anchored)
+        {
+            _isAnchored = anchored;
+            if (anchored)
+            {
+                // Sett ankerposisjon til gjeldende posisjon
+                _anchorLat = _latitude;
+                _anchorLon = _longitude;
+            }
+        }
+
         // --- Hovedoppdatering ---
         public void Update(TimeSpan deltaTime)
         {
@@ -121,6 +139,27 @@ namespace SimulatorService
 
             var (dxEnv, dyEnv) = CalculateEnvironmentalInfluence(seconds);
 
+            // Hvis ankret, reduser miljøpåvirkning betydelig
+            if (_isAnchored)
+            {
+                dxEnv *= 0.1; // Reduser drift til 10% av normal påvirkning
+                dyEnv *= 0.1;
+
+                // Sjekk om vi har driftet for langt fra ankerposisjon
+                double currentDrift = CalculateDistanceMeters(_latitude, _longitude, _anchorLat, _anchorLon);
+                if (currentDrift > MaxAnchorDrift)
+                {
+                    // Trekk tilbake mot ankerposisjon
+                    double bearing = CalculateBearing(_latitude, _longitude, _anchorLat, _anchorLon);
+                    double pullDistance = (currentDrift - MaxAnchorDrift) / 6371000.0 * 60.0; // meter -> nm
+
+                    double pullDy = pullDistance * Math.Cos(DegToRad(bearing));
+                    double pullDx = pullDistance * Math.Sin(DegToRad(bearing));
+
+                    dxEnv += pullDx;
+                    dyEnv += pullDy;
+                }
+            }
 
             // Korrekt navigasjon: 0°=nord, 90°=øst
             double dyShip = distanceShip * Math.Cos(DegToRad(_heading)); // nord/sør

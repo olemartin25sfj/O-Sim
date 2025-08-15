@@ -7,5 +7,6 @@ public sealed record NavigationData(
     double Longitude,
     double SpeedKnots,
     double HeadingDegrees,
-    double CourseOverGroundDegrees
+    double CourseOverGroundDegrees,
+    bool IsAnchored = false
 );

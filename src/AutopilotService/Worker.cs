@@ -15,6 +15,7 @@ public class Worker : BackgroundService
     private double _integralError = 0.0;
     private List<(double lat, double lon)>? _routeWaypoints;
     private int _currentWaypointIndex = 0;
+    private bool _wasAnchored = false; // For å spore anker-tilstand
 
     // PID-konstanter for kursregulering
     private const double Kp = 2.0;
@@ -187,6 +188,22 @@ public class Worker : BackgroundService
             {
                 if (_lastNavData != null)
                 {
+                    // Håndter anker-tilstand basert på om vi har aktiv rute
+                    bool shouldBeAnchored = _routeWaypoints == null || _currentWaypointIndex >= _routeWaypoints.Count;
+
+                    if (shouldBeAnchored && !_wasAnchored)
+                    {
+                        // Senk ankeret
+                        SendAnchorCommand(natsConnection, true);
+                        _wasAnchored = true;
+                    }
+                    else if (!shouldBeAnchored && _wasAnchored)
+                    {
+                        // Heis ankeret
+                        SendAnchorCommand(natsConnection, false);
+                        _wasAnchored = false;
+                    }
+
                     // Sjekk waypoint-navigasjon
                     if (_routeWaypoints != null && _currentWaypointIndex < _routeWaypoints.Count)
                     {
@@ -311,5 +328,25 @@ public class Worker : BackgroundService
                    Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
         double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
         return R * c; // Distanse i meter
+    }
+
+    private void SendAnchorCommand(IConnection natsConnection, bool isAnchored)
+    {
+        try
+        {
+            var anchorCommand = new SetAnchorCommand(
+                TimestampUtc: DateTime.UtcNow,
+                IsAnchored: isAnchored
+            );
+
+            var json = JsonSerializer.Serialize(anchorCommand);
+            natsConnection.Publish("sim.commands.anchor", System.Text.Encoding.UTF8.GetBytes(json));
+
+            _logger.LogInformation($"AutopilotService: Anker {(isAnchored ? "senket" : "heist")}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"AutopilotService: Feil ved sending av anker-kommando: {ex.Message}");
+        }
     }
 }
