@@ -139,7 +139,7 @@ app.MapPost("/api/simulator/speed", async (HttpContext context, SimulatorEngine 
         if (command == null)
             return Results.BadRequest("Invalid command format");
 
-        engine.SetDesiredSpeed(command.TargetSpeedKnots);
+        // Publiser NATS-kommando til AutopilotService (fjernet direkte engine setting)
         app.Logger.LogInformation("Desired speed set to {Speed} knots", command.TargetSpeedKnots);
         PublishCommandAndLog(nats, "sim.commands.setspeed", command, "SimulatorService",
             $"Speed set to {command.TargetSpeedKnots}");
@@ -253,10 +253,26 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngin
 // Manuell stopp av fartøy / kanseller reise
 app.MapPost("/api/simulator/stop", (SimulatorEngine engine, IConnection nats) =>
 {
-    engine.SetDesiredSpeed(0.0);
-    var stopEvt = new { timestampUtc = DateTime.UtcNow, reason = "manual" };
-    PublishCommandAndLog(nats, "sim.commands.stop", stopEvt, "SimulatorService", "Manual stop issued");
-    return Results.Ok(new { Message = "Stopped" });
+    try
+    {
+        // Send SetSpeedCommand med 0 knop til AutopilotService
+        var stopCommand = new SetSpeedCommand(DateTime.UtcNow, 0.0);
+        var json = JsonSerializer.Serialize(stopCommand);
+        nats.Publish("sim.commands.setspeed", System.Text.Encoding.UTF8.GetBytes(json));
+
+        // Log kommandoen
+        var log = new LogEntry(DateTime.UtcNow, "SimulatorService", "Information", "Stop command sent (speed=0)", null);
+        var logJson = JsonSerializer.Serialize(log);
+        nats.Publish("log.entries", System.Text.Encoding.UTF8.GetBytes(logJson));
+
+        app.Logger.LogInformation("Stop command sent as speed=0 via NATS");
+        return Results.Ok(new { Message = "Stopped" });
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError($"Failed to send stop command: {ex.Message}");
+        return Results.StatusCode(500);
+    }
 }).WithName("SimulatorStop");
 
 // Destination / progress status

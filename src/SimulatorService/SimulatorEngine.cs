@@ -38,7 +38,7 @@ namespace SimulatorService
         // Konstanter
         private const double BaseTurnRate = 1.0;        // grader per sekund
         private const double TurnRatePerKnot = 0.5;     // ekstra grader/s per knop
-        private const double Acceleration = 1.0;        // knop per sekund
+        private const double Acceleration = 3.0;        // knop per sekund
 
         // Offentlig tilgjengelig tilstand (for UI/logging)
         public double Latitude => _latitude;
@@ -111,7 +111,7 @@ namespace SimulatorService
             _heading = NormalizeAngle(_heading + headingChange);
 
             // 2. Fart – bruk thrust for akselerasjon
-            double targetSpeed = (_thrustPercent / 100.0) * 20.0; // max 20 knop ved 100% thrust
+            double targetSpeed = (_thrustPercent / 100.0) * 35.0; // max 35 knop ved 100% thrust
             double speedDelta = targetSpeed - _speed;
             double speedChange = Math.Clamp(speedDelta, -Acceleration * seconds, Acceleration * seconds);
             _speed += speedChange;

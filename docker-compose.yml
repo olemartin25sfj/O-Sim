@@ -5,10 +5,7 @@ services:
       dockerfile: SimulatorService/Dockerfile
     depends_on:
       - nats
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.simulator.rule=PathPrefix(`/api/simulator`)
-      - traefik.http.services.simulator.loadbalancer.server.port=5001
+    # Removed Traefik labels - SimulatorService is now internal only (NATS communication)
 
   environmentservice:
     build:
@@ -67,6 +64,7 @@ services:
       - traefik.http.routers.gatewayproxy-ws.rule=PathPrefix(`/ws`)
       - traefik.http.services.gatewayproxy.loadbalancer.server.port=5000
       - traefik.http.routers.gatewayproxy-routes.rule=PathPrefix(`/api/routes`)
+      - traefik.http.routers.gatewayproxy-simulator.rule=PathPrefix(`/api/simulator`)
 
   traefik:
     image: traefik:v2.11

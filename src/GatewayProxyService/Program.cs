@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using GatewayProxyService;
 using NATS.Client;
+using OSim.Shared.Messages;
 
 // Load static routes catalog at startup (types in Routes.cs)
 var routesFile = Path.Combine(AppContext.BaseDirectory, "Data", "routes.json");
@@ -17,6 +18,25 @@ foreach (var r in routes)
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+
+// NATS connection singleton
+builder.Services.AddSingleton<IConnection>(_ =>
+{
+    int retries = 10;
+    for (int i = 0; i < retries; i++)
+    {
+        try
+        {
+            return new ConnectionFactory().CreateConnection("nats://nats:4222");
+        }
+        catch when (i < retries - 1)
+        {
+            Thread.Sleep(2000);
+        }
+    }
+    throw new InvalidOperationException("Could not connect to NATS after multiple attempts");
+});
+
 var app = builder.Build();
 
 app.UseCors();
@@ -50,6 +70,169 @@ app.MapGet("/api/routes/{id}", (string id) =>
     if (routeDetails.TryGetValue(id, out var detail))
         return Results.Ok(detail);
     return Results.NotFound();
+});
+
+// API Proxy endpoints for simulator commands
+app.MapPost("/api/simulator/speed", async (HttpContext context, IConnection nats) =>
+{
+    try
+    {
+        using var reader = new StreamReader(context.Request.Body);
+        var body = await reader.ReadToEndAsync();
+        var command = JsonSerializer.Deserialize<SetSpeedCommand>(body);
+
+        if (command == null)
+            return Results.BadRequest("Invalid command format");
+
+        var json = JsonSerializer.Serialize(command);
+        nats.Publish("sim.commands.setspeed", Encoding.UTF8.GetBytes(json));
+
+        app.Logger.LogInformation("Proxied speed command: {Speed} knots", command.TargetSpeedKnots);
+        return Results.Ok(new { Message = $"Speed set to {command.TargetSpeedKnots}" });
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError("Error proxying speed command: {Error}", ex.Message);
+        return Results.BadRequest(ex.Message);
+    }
+});
+
+app.MapPost("/api/simulator/stop", (HttpContext context, IConnection nats) =>
+{
+    try
+    {
+        // Send speed=0 command via NATS
+        var stopCommand = new SetSpeedCommand(DateTime.UtcNow, 0.0);
+        var json = JsonSerializer.Serialize(stopCommand);
+        nats.Publish("sim.commands.setspeed", Encoding.UTF8.GetBytes(json));
+
+        app.Logger.LogInformation("Proxied stop command (speed=0)");
+        return Results.Ok(new { Message = "Stopped" });
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError("Error proxying stop command: {Error}", ex.Message);
+        return Results.StatusCode(500);
+    }
+});
+
+app.MapPost("/api/simulator/course", async (HttpContext context, IConnection nats) =>
+{
+    try
+    {
+        using var reader = new StreamReader(context.Request.Body);
+        var body = await reader.ReadToEndAsync();
+        var command = JsonSerializer.Deserialize<SetCourseCommand>(body);
+
+        if (command == null)
+            return Results.BadRequest("Invalid command format");
+
+        var json = JsonSerializer.Serialize(command);
+        nats.Publish("sim.commands.setcourse", Encoding.UTF8.GetBytes(json));
+
+        app.Logger.LogInformation("Proxied course command: {Course} degrees", command.TargetCourseDegrees);
+        return Results.Ok(new { Message = $"Course set to {command.TargetCourseDegrees}" });
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError("Error proxying course command: {Error}", ex.Message);
+        return Results.BadRequest(ex.Message);
+    }
+});
+
+app.MapPost("/api/simulator/journey", async (HttpContext context, IConnection nats) =>
+{
+    try
+    {
+        using var reader = new StreamReader(context.Request.Body);
+        var body = await reader.ReadToEndAsync();
+
+        // Parse the journey payload as generic JSON since it's complex
+        var jsonDocument = JsonDocument.Parse(body);
+        var root = jsonDocument.RootElement;
+
+        // Extract journey details
+        double? startLat = root.TryGetProperty("startLatitude", out var sLat) ? sLat.GetDouble() : null;
+        double? startLon = root.TryGetProperty("startLongitude", out var sLon) ? sLon.GetDouble() : null;
+        double? endLat = root.TryGetProperty("endLatitude", out var eLat) ? eLat.GetDouble() : null;
+        double? endLon = root.TryGetProperty("endLongitude", out var eLon) ? eLon.GetDouble() : null;
+        double cruiseSpeed = root.TryGetProperty("cruiseSpeedKnots", out var cruise) ? cruise.GetDouble() : 20.0;
+
+        // Handle route waypoints if present
+        var waypoints = new List<object>();
+        if (root.TryGetProperty("routeWaypoints", out var routeWaypointsElement) && routeWaypointsElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var waypoint in routeWaypointsElement.EnumerateArray())
+            {
+                if (waypoint.TryGetProperty("latitude", out var lat) && waypoint.TryGetProperty("longitude", out var lon))
+                {
+                    waypoints.Add(new { latitude = lat.GetDouble(), longitude = lon.GetDouble() });
+                }
+            }
+        }
+
+        // Set start position if provided - call SimulatorService directly
+        if (startLat.HasValue && startLon.HasValue)
+        {
+            try
+            {
+                using var httpClient = new HttpClient();
+                var positionPayload = new { latitude = startLat.Value, longitude = startLon.Value };
+                var positionJson = JsonSerializer.Serialize(positionPayload);
+                var content = new StringContent(positionJson, Encoding.UTF8, "application/json");
+                await httpClient.PostAsync("http://simulatorservice:5001/api/simulator/position", content);
+                app.Logger.LogInformation("Set vessel position to ({Lat}, {Lon})", startLat.Value, startLon.Value);
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning("Failed to set vessel position: {Error}", ex.Message);
+            }
+        }
+
+        // Set cruise speed
+        var speedCommand = new SetSpeedCommand(DateTime.UtcNow, cruiseSpeed);
+        var speedJson = JsonSerializer.Serialize(speedCommand);
+        nats.Publish("sim.commands.setspeed", Encoding.UTF8.GetBytes(speedJson));
+
+        app.Logger.LogInformation("Proxied journey command: Start({StartLat},{StartLon}) End({EndLat},{EndLon}) Speed={Speed} Waypoints={Count}",
+            startLat, startLon, endLat, endLon, cruiseSpeed, waypoints.Count);
+
+        return Results.Ok(new
+        {
+            Message = "Journey started",
+            startLatitude = startLat,
+            startLongitude = startLon,
+            endLatitude = endLat,
+            endLongitude = endLon,
+            cruiseSpeedKnots = cruiseSpeed,
+            waypoints = waypoints
+        });
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError("Error proxying journey command: {Error}", ex.Message);
+        return Results.BadRequest(ex.Message);
+    }
+});
+
+app.MapGet("/api/simulator/destination", () =>
+{
+    // Simple placeholder - in real implementation this would track journey progress
+    return Results.Ok(new { hasDestination = false });
+});
+
+app.MapGet("/api/simulator/nav", () =>
+{
+    // Placeholder - real nav data comes via WebSocket, but some clients might poll
+    return Results.Ok(new
+    {
+        timestampUtc = DateTime.UtcNow,
+        latitude = 59.0,
+        longitude = 10.0,
+        speedKnots = 0.0,
+        headingDegrees = 0.0,
+        hasDestination = false
+    });
 });
 
 app.Map("/ws/nav", async context =>
@@ -119,6 +302,22 @@ app.Map("/ws/nav", async context =>
             }
         });
 
+        var subAlarm = nats.SubscribeAsync("alarm.triggers", (s, a) =>
+        {
+            try
+            {
+                if (ws.State != System.Net.WebSockets.WebSocketState.Open) return;
+                var json = Encoding.UTF8.GetString(a.Message.Data);
+                var buffer = Encoding.UTF8.GetBytes(json);
+                _ = ws.SendAsync(buffer, System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token);
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogDebug("WebSocket send feilet (alarm): {Message}", ex.Message);
+                cts.Cancel();
+            }
+        });
+
         var buffer2 = new byte[1]; // vi forventer ikke data fra klienten; liten buffer
         try
         {
@@ -143,6 +342,7 @@ app.Map("/ws/nav", async context =>
             cts.Cancel();
             try { subNav.Unsubscribe(); } catch { }
             try { subEnv.Unsubscribe(); } catch { }
+            try { subAlarm.Unsubscribe(); } catch { }
         }
     }
     else

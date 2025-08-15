@@ -123,6 +123,20 @@ public class Worker : BackgroundService
                 }
             });
 
+            // Abonner på stopp-kommandoer
+            var stopSubscription = natsConnection.SubscribeAsync("sim.commands.stop", (sender, args) =>
+            {
+                try
+                {
+                    _targetSpeed = 0.0;
+                    _logger.LogInformation("AutopilotService: Mottok stopp-kommando, setter målfart til 0 knop");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"AutopilotService: Feil ved behandling av stopp-kommando: {ex.Message}");
+                }
+            });
+
             // Hovedløkke for autopilot-regulering
             while (!stoppingToken.IsCancellationRequested)
             {

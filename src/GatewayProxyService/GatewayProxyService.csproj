@@ -11,6 +11,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OSim.Shared.Messages\OSim.Shared.Messages.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Use Update instead of Include to avoid duplicating the implicit Content item -->
     <Content Update="Data/routes.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
