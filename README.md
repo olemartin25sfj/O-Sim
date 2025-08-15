@@ -129,3 +129,4 @@ For å kjøre en enkelt tjeneste lokalt:
 - [Systemarkitektur](Docs/Systemarkitektur.md) - Detaljert arkitekturbeskrivelse
 - [API Contracts](Docs/api-contracts.md) - Meldingsformater og API-definisjoner
 - [MVP Plan](Docs/mvp-plan.md) - Utviklingsplan og milepæler
+- [Idéer til fremtidige utvidelser og forbedringer](Docs/Idéer-til-fremtidige-utvidelser-og-forbedringer.md) - Forslag/roadmap utover MVP (inkl. ECDIS‑lite)
