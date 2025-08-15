@@ -133,6 +133,8 @@ export const VesselMap = ({
   const [smoothedRoute, setSmoothedRoute] = useState<[number, number][] | null>(
     null
   );
+  // Track if user explicitly cleared the editable route to avoid auto-creating [start,end]
+  const clearedRouteRef = useRef(false);
   // Removed predefined catalog routes
   // Panel visibility
   const [showRoutesPanel, setShowRoutesPanel] = useState(true);
@@ -152,6 +154,8 @@ export const VesselMap = ({
   const position: [number, number] = navigation
     ? [navigation.latitude, navigation.longitude]
     : defaultPosition;
+  // Route mode: when editing or when a manual editable route exists
+  const routeMode = editMode || (editableRoutePoints?.length ?? 0) >= 2;
 
   // Smoothed heading interpolation
   const [displayHeading, setDisplayHeading] = useState<number>(
@@ -239,7 +243,12 @@ export const VesselMap = ({
 
   // Hvis bruker har valgt start og dest, sett en enkel rute [start, end] som utgangspunkt
   useEffect(() => {
-    if (!editableRoutePoints && selectedStart && selectedEnd) {
+    if (
+      !editableRoutePoints &&
+      selectedStart &&
+      selectedEnd &&
+      !clearedRouteRef.current
+    ) {
       setEditableRoutePoints([selectedStart, selectedEnd]);
     }
   }, [selectedStart, selectedEnd, editableRoutePoints]);
@@ -490,6 +499,16 @@ export const VesselMap = ({
     setSelectedRouteId(null);
   };
 
+  const clearEditableRoute = () => {
+    setEditableRoutePoints(null);
+    setDraftPoints([]);
+    setSmoothedRoute(null);
+    setEditMode(false);
+    clearedRouteRef.current = true;
+    // reset flag after a tick so future start/dest selections can recreate intentionally
+    setTimeout(() => (clearedRouteRef.current = false), 500);
+  };
+
   // (Removed duplicate persistence & build effect block)
 
   // Map click for selecting start/destination
@@ -708,6 +727,7 @@ export const VesselMap = ({
               opacity={0.9}
             />
           )}
+          {/* Clear editable route quick button (top-right small) */}
           {/* Waypoint markører */}
           {editMode &&
             draftPoints.map((pt, idx) => (
@@ -981,6 +1001,13 @@ export const VesselMap = ({
               </Fab>
             </Tooltip>
           )}
+          {!editMode && editableRoutePoints && (
+            <Tooltip title="Fjern nåværende rute">
+              <Fab size="small" color="default" onClick={clearEditableRoute}>
+                ✕
+              </Fab>
+            </Tooltip>
+          )}
           <Tooltip title="Legg til rute">
             <Fab
               color="primary"
@@ -991,43 +1018,47 @@ export const VesselMap = ({
               <AddIcon />
             </Fab>
           </Tooltip>
-          <Tooltip
-            title={
-              selectMode === "start"
-                ? "Klikk i kartet for start"
-                : "Velg startpunkt"
-            }
-          >
-            <Fab
-              size="small"
-              color={selectMode === "start" ? "success" : "default"}
-              onClick={() => {
-                setSelectMode((m) => (m === "start" ? "none" : "start"));
-                // Deaktiver auto-følge når bruker går inn i seleksjonsmodus
-                setFollowVessel(false);
-              }}
-            >
-              S
-            </Fab>
-          </Tooltip>
-          <Tooltip
-            title={
-              selectMode === "end"
-                ? "Klikk i kartet for destinasjon"
-                : "Velg destinasjon"
-            }
-          >
-            <Fab
-              size="small"
-              color={selectMode === "end" ? "error" : "default"}
-              onClick={() => {
-                setSelectMode((m) => (m === "end" ? "none" : "end"));
-                setFollowVessel(false);
-              }}
-            >
-              D
-            </Fab>
-          </Tooltip>
+          {!routeMode && (
+            <>
+              <Tooltip
+                title={
+                  selectMode === "start"
+                    ? "Klikk i kartet for start"
+                    : "Velg startpunkt"
+                }
+              >
+                <Fab
+                  size="small"
+                  color={selectMode === "start" ? "success" : "default"}
+                  onClick={() => {
+                    setSelectMode((m) => (m === "start" ? "none" : "start"));
+                    // Deaktiver auto-følge når bruker går inn i seleksjonsmodus
+                    setFollowVessel(false);
+                  }}
+                >
+                  S
+                </Fab>
+              </Tooltip>
+              <Tooltip
+                title={
+                  selectMode === "end"
+                    ? "Klikk i kartet for destinasjon"
+                    : "Velg destinasjon"
+                }
+              >
+                <Fab
+                  size="small"
+                  color={selectMode === "end" ? "error" : "default"}
+                  onClick={() => {
+                    setSelectMode((m) => (m === "end" ? "none" : "end"));
+                    setFollowVessel(false);
+                  }}
+                >
+                  D
+                </Fab>
+              </Tooltip>
+            </>
+          )}
           {/* Removed add-generated-route button */}
           {routes.length > 0 && (
             <Tooltip title="Fjern alle ruter">

@@ -271,6 +271,12 @@ function App() {
           latitude: p[0],
           longitude: p[1],
         }));
+        // Hvis start ikke eksplisitt er satt, teleporter til første rute‑punkt
+        if (!startPoint) {
+          const first = activeRoutePoints[0];
+          payload.startLatitude = first[0];
+          payload.startLongitude = first[1];
+        }
       }
       await fetch(`${apiBase}/api/simulator/journey`, {
         method: "POST",
@@ -287,6 +293,13 @@ function App() {
           prev
             ? { ...prev, latitude: startPoint[0], longitude: startPoint[1] }
             : prev
+        );
+      } else if (activeRoutePoints && activeRoutePoints.length >= 2) {
+        const first = activeRoutePoints[0];
+        setJourneyTrack([[first[0], first[1]]]);
+        plannedStartRef.current = first;
+        setNavigation((prev) =>
+          prev ? { ...prev, latitude: first[0], longitude: first[1] } : prev
         );
       } else {
         setJourneyTrack([]);
