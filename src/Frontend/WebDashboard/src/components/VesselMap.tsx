@@ -8,7 +8,7 @@ import {
   Polyline,
 } from "react-leaflet";
 import { useMapEvent } from "react-leaflet";
-import { Icon, LatLng, divIcon } from "leaflet";
+import { Icon, LatLng, divIcon, Map as LeafletMap } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   Box,
@@ -20,6 +20,9 @@ import {
   Menu,
   MenuItem,
   Divider,
+  SpeedDial,
+  SpeedDialAction,
+  SpeedDialIcon,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
@@ -141,6 +144,7 @@ export const VesselMap = ({
   // Removed catalog panel state
   const [followVessel, setFollowVessel] = useState(false);
   const lastUserPanRef = useRef<number>(0);
+  const mapRef = useRef<LeafletMap | null>(null);
   // Removed apiBase (catalog feature removed)
   // Right-click context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -575,6 +579,7 @@ export const VesselMap = ({
           center={position}
           zoom={13}
           style={{ height: "100%", width: "100%" }}
+          ref={mapRef as any}
         >
           {/* CatalogFetcher removed */}
           {/* Base (OSM) first */}
@@ -1019,45 +1024,49 @@ export const VesselMap = ({
             </Fab>
           </Tooltip>
           {!routeMode && (
-            <>
-              <Tooltip
-                title={
+            <SpeedDial
+              ariaLabel="Kartvalg"
+              icon={<SpeedDialIcon />}
+              direction="up"
+              FabProps={{ size: "small", color: "default" }}
+            >
+              <SpeedDialAction
+                icon={<span style={{ fontWeight: 700 }}>S</span>}
+                tooltipTitle={
                   selectMode === "start"
                     ? "Klikk i kartet for start"
                     : "Velg startpunkt"
                 }
-              >
-                <Fab
-                  size="small"
-                  color={selectMode === "start" ? "success" : "default"}
-                  onClick={() => {
-                    setSelectMode((m) => (m === "start" ? "none" : "start"));
-                    // Deaktiver auto-følge når bruker går inn i seleksjonsmodus
-                    setFollowVessel(false);
-                  }}
-                >
-                  S
-                </Fab>
-              </Tooltip>
-              <Tooltip
-                title={
+                onClick={() => {
+                  setSelectMode((m) => (m === "start" ? "none" : "start"));
+                  setFollowVessel(false);
+                }}
+              />
+              <SpeedDialAction
+                icon={<span style={{ fontWeight: 700 }}>D</span>}
+                tooltipTitle={
                   selectMode === "end"
                     ? "Klikk i kartet for destinasjon"
                     : "Velg destinasjon"
                 }
-              >
-                <Fab
-                  size="small"
-                  color={selectMode === "end" ? "error" : "default"}
-                  onClick={() => {
-                    setSelectMode((m) => (m === "end" ? "none" : "end"));
-                    setFollowVessel(false);
-                  }}
-                >
-                  D
-                </Fab>
-              </Tooltip>
-            </>
+                onClick={() => {
+                  setSelectMode((m) => (m === "end" ? "none" : "end"));
+                  setFollowVessel(false);
+                }}
+              />
+              <SpeedDialAction
+                icon={<span style={{ fontWeight: 700 }}>•</span>}
+                tooltipTitle="Sentrer på fartøy"
+                onClick={() => {
+                  if (!mapRef.current) return;
+                  mapRef.current.setView(
+                    new LatLng(position[0], position[1]),
+                    mapRef.current.getZoom(),
+                    { animate: true }
+                  );
+                }}
+              />
+            </SpeedDial>
           )}
           {/* Removed add-generated-route button */}
           {routes.length > 0 && (
