@@ -121,8 +121,12 @@ namespace SimulatorService
             double dxTotal = dxShip + dxEnv;
             double dyTotal = dyShip + dyEnv;
 
-            _latitude += dyTotal / 60.0;    // nm til grader (nord/sør)
-            _longitude += dxTotal / 60.0;   // nm til grader (øst/vest)
+            _latitude += dyTotal / 60.0;    // nm -> grader (nord/sør)
+            // Korriger lengdegrad for breddegrad: 1° lon = 60 nm * cos(lat)
+            double latRad = DegToRad(_latitude);
+            double nmPerLonDeg = 60.0 * Math.Cos(latRad);
+            if (nmPerLonDeg < 1e-6) nmPerLonDeg = 1e-6; // beskyttelse nær polene
+            _longitude += dxTotal / nmPerLonDeg;   // nm -> grader (øst/vest)
 
             // 4. Sjekk om vi har ankommet destinasjonen
             if (HasDestination && !HasArrived)
@@ -130,10 +134,8 @@ namespace SimulatorService
                 double distanceMeters = CalculateDistanceMeters(_latitude, _longitude, _targetLat!.Value, _targetLon!.Value);
                 if (distanceMeters <= ArrivalThresholdMeters)
                 {
+                    // Marker ankomst, men la Autopilot kontrollere fart/stopp ved fullført rute
                     HasArrived = true;
-                    _speed = 0.0;
-                    _desiredSpeed = 0.0;
-                    Console.WriteLine($"✅ Fartøyet har nådd destinasjonen! ({_targetLat:F4}, {_targetLon:F4})");
                 }
             }
         }

@@ -249,6 +249,7 @@ app.MapGet("/api/simulator/destination", (SimulatorEngine engine, AutopilotServi
         return Results.Ok(new { hasDestination = false });
 
     var (hasTarget, distanceNm) = autopilot.GetDestinationStatus(engine.Latitude, engine.Longitude);
+    var ap = autopilot.GetDebugState();
     double? etaMinutes = null;
     if (distanceNm.HasValue && engine.Speed > 0.1)
     {
@@ -261,7 +262,7 @@ app.MapGet("/api/simulator/destination", (SimulatorEngine engine, AutopilotServi
         targetLongitude = engine.TargetLongitude,
         distanceNm,
         etaMinutes,
-        hasArrived = engine.HasArrived
+        hasArrived = ap.RouteCompleted
     });
 });
 
