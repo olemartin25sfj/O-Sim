@@ -147,66 +147,41 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, IConnection na
         using var reader = new StreamReader(context.Request.Body);
         var body = await reader.ReadToEndAsync();
 
-        // Parse the journey payload as generic JSON since it's complex
-        var jsonDocument = JsonDocument.Parse(body);
-        var root = jsonDocument.RootElement;
+        // Forward the journey request directly to SimulatorService
+        using var httpClient = new HttpClient();
+        var content = new StringContent(body, Encoding.UTF8, "application/json");
+        var response = await httpClient.PostAsync("http://simulatorservice:5001/api/simulator/journey", content);
 
-        // Extract journey details
-        double? startLat = root.TryGetProperty("startLatitude", out var sLat) ? sLat.GetDouble() : null;
-        double? startLon = root.TryGetProperty("startLongitude", out var sLon) ? sLon.GetDouble() : null;
-        double? endLat = root.TryGetProperty("endLatitude", out var eLat) ? eLat.GetDouble() : null;
-        double? endLon = root.TryGetProperty("endLongitude", out var eLon) ? eLon.GetDouble() : null;
-        double cruiseSpeed = root.TryGetProperty("cruiseSpeedKnots", out var cruise) ? cruise.GetDouble() : 20.0;
-
-        // Handle route waypoints if present
-        var waypoints = new List<object>();
-        if (root.TryGetProperty("routeWaypoints", out var routeWaypointsElement) && routeWaypointsElement.ValueKind == JsonValueKind.Array)
+        if (response.IsSuccessStatusCode)
         {
-            foreach (var waypoint in routeWaypointsElement.EnumerateArray())
-            {
-                if (waypoint.TryGetProperty("latitude", out var lat) && waypoint.TryGetProperty("longitude", out var lon))
-                {
-                    waypoints.Add(new { latitude = lat.GetDouble(), longitude = lon.GetDouble() });
-                }
-            }
-        }
+            var responseBody = await response.Content.ReadAsStringAsync();
+            app.Logger.LogInformation("Successfully proxied journey command to SimulatorService");
 
-        // Set start position if provided - call SimulatorService directly
-        if (startLat.HasValue && startLon.HasValue)
-        {
+            // Parse response to extract journey details for logging
             try
             {
-                using var httpClient = new HttpClient();
-                var positionPayload = new { latitude = startLat.Value, longitude = startLon.Value };
-                var positionJson = JsonSerializer.Serialize(positionPayload);
-                var content = new StringContent(positionJson, Encoding.UTF8, "application/json");
-                await httpClient.PostAsync("http://simulatorservice:5001/api/simulator/position", content);
-                app.Logger.LogInformation("Set vessel position to ({Lat}, {Lon})", startLat.Value, startLon.Value);
+                var jsonDoc = JsonDocument.Parse(body);
+                var root = jsonDoc.RootElement;
+                var startLat = root.TryGetProperty("startLatitude", out var sLat) ? sLat.GetDouble() : (double?)null;
+                var startLon = root.TryGetProperty("startLongitude", out var sLon) ? sLon.GetDouble() : (double?)null;
+                var endLat = root.TryGetProperty("endLatitude", out var eLat) ? eLat.GetDouble() : (double?)null;
+                var endLon = root.TryGetProperty("endLongitude", out var eLon) ? eLon.GetDouble() : (double?)null;
+                var waypointCount = root.TryGetProperty("routeWaypoints", out var wp) && wp.ValueKind == JsonValueKind.Array ? wp.GetArrayLength() : 0;
+
+                app.Logger.LogInformation("Journey started: Start({StartLat},{StartLon}) End({EndLat},{EndLon}) Waypoints={Count}",
+                    startLat, startLon, endLat, endLon, waypointCount);
             }
-            catch (Exception ex)
-            {
-                app.Logger.LogWarning("Failed to set vessel position: {Error}", ex.Message);
-            }
+            catch { /* Ignore parsing errors for logging */ }
+
+            // Return the original response from SimulatorService
+            return Results.Content(responseBody, "application/json");
         }
-
-        // Set cruise speed
-        var speedCommand = new SetSpeedCommand(DateTime.UtcNow, cruiseSpeed);
-        var speedJson = JsonSerializer.Serialize(speedCommand);
-        nats.Publish("sim.commands.setspeed", Encoding.UTF8.GetBytes(speedJson));
-
-        app.Logger.LogInformation("Proxied journey command: Start({StartLat},{StartLon}) End({EndLat},{EndLon}) Speed={Speed} Waypoints={Count}",
-            startLat, startLon, endLat, endLon, cruiseSpeed, waypoints.Count);
-
-        return Results.Ok(new
+        else
         {
-            Message = "Journey started",
-            startLatitude = startLat,
-            startLongitude = startLon,
-            endLatitude = endLat,
-            endLongitude = endLon,
-            cruiseSpeedKnots = cruiseSpeed,
-            waypoints = waypoints
-        });
+            var errorBody = await response.Content.ReadAsStringAsync();
+            app.Logger.LogError("SimulatorService journey request failed: {StatusCode} - {Error}", response.StatusCode, errorBody);
+            return Results.StatusCode((int)response.StatusCode);
+        }
     }
     catch (Exception ex)
     {
