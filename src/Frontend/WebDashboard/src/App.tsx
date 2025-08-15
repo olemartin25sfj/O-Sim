@@ -249,7 +249,7 @@ function App() {
   };
 
   const canStartJourney =
-    !!endPoint || !!(activeRoutePoints && activeRoutePoints.length > 0);
+    !!endPoint || !!(activeRoutePoints && activeRoutePoints.length >= 2);
   const startJourney = async () => {
     if (!endPoint && !(activeRoutePoints && activeRoutePoints.length > 0))
       return;
@@ -264,7 +264,7 @@ function App() {
         payload.startLatitude = startPoint[0];
         payload.startLongitude = startPoint[1];
       }
-      if (activeRoutePoints && activeRoutePoints.length > 0) {
+      if (activeRoutePoints && activeRoutePoints.length >= 2) {
         // Smooth & sample rute for jevn styring
         const smoothed = smoothAndSample(activeRoutePoints);
         payload.routeWaypoints = smoothed.map((p) => ({

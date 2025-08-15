@@ -10,7 +10,17 @@ import {
 import { useMapEvent } from "react-leaflet";
 import { Icon, LatLng, divIcon } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Box, Paper, Fab, Tooltip, TextField, IconButton } from "@mui/material";
+import {
+  Box,
+  Paper,
+  Fab,
+  Tooltip,
+  TextField,
+  IconButton,
+  Menu,
+  MenuItem,
+  Divider,
+} from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -127,9 +137,16 @@ export const VesselMap = ({
   // Panel visibility
   const [showRoutesPanel, setShowRoutesPanel] = useState(true);
   // Removed catalog panel state
-  const [followVessel, setFollowVessel] = useState(true);
+  const [followVessel, setFollowVessel] = useState(false);
   const lastUserPanRef = useRef<number>(0);
   // Removed apiBase (catalog feature removed)
+  // Right-click context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    lat: number;
+    lng: number;
+  } | null>(null);
 
   const defaultPosition: [number, number] = [59.415065, 10.493529]; // Horten v/Asko
   const position: [number, number] = navigation
@@ -153,6 +170,11 @@ export const VesselMap = ({
       return (next + 360) % 360;
     });
   }, [navigation?.headingDegrees, navigation]);
+
+  // Pause auto-follow whenever we enter edit mode
+  useEffect(() => {
+    if (editMode) setFollowVessel(false);
+  }, [editMode]);
 
   const generateId = () => Math.random().toString(36).slice(2, 11);
 
@@ -354,6 +376,82 @@ export const VesselMap = ({
     }
   };
 
+  // Helper: distance calculation and nearest segment index for insertion
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const approxMetersXY = (a: [number, number], b: [number, number]) => {
+    const latm = 111320; // ~meters per degree latitude
+    const midLat = toRad((a[0] + b[0]) / 2);
+    const lonm = 111320 * Math.cos(midLat);
+    const dx = (b[1] - a[1]) * lonm;
+    const dy = (b[0] - a[0]) * latm;
+    return { dx, dy };
+  };
+  const pointToSegmentDistance = (
+    p: [number, number],
+    a: [number, number],
+    b: [number, number]
+  ) => {
+    const { dx, dy } = approxMetersXY(a, b);
+    const segLen2 = dx * dx + dy * dy;
+    if (segLen2 === 0) {
+      const { dx: dxp, dy: dyp } = approxMetersXY(a, p);
+      return Math.sqrt(dxp * dxp + dyp * dyp);
+    }
+    const { dx: dxa, dy: dya } = approxMetersXY(a, p);
+    const t = Math.max(0, Math.min(1, (dxa * dx + dya * dy) / segLen2));
+    const proj: [number, number] = [
+      a[0] + (((b[0] - a[0]) * t) as number),
+      a[1] + (((b[1] - a[1]) * t) as number),
+    ];
+    const { dx: dxc, dy: dyc } = approxMetersXY(proj, p);
+    return Math.sqrt(dxc * dxc + dyc * dyc);
+  };
+  const findInsertIndex = (pts: [number, number][], p: [number, number]) => {
+    if (!pts || pts.length < 2) return pts ? pts.length : 0;
+    let bestIdx = 1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 1; i < pts.length; i++) {
+      const d = pointToSegmentDistance(p, pts[i - 1], pts[i]);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  };
+
+  const insertWaypointAt = (lat: number, lng: number) => {
+    const p: [number, number] = [lat, lng];
+    if (editMode) {
+      setDraftPoints((pts) => {
+        const idx = findInsertIndex(pts, p);
+        const next = [...pts];
+        next.splice(idx, 0, p);
+        return next;
+      });
+    } else {
+      setEditableRoutePoints((pts) => {
+        if (!pts || pts.length < 2) return pts ? [...pts, p] : [p];
+        const idx = findInsertIndex(pts, p);
+        const next = [...pts];
+        next.splice(idx, 0, p);
+        return next;
+      });
+    }
+  };
+
+  const appendWaypointAt = (lat: number, lng: number) => {
+    const p: [number, number] = [lat, lng];
+    if (editMode) setDraftPoints((pts) => [...pts, p]);
+    else setEditableRoutePoints((pts) => (pts ? [...pts, p] : [p]));
+  };
+
+  const startNewRouteHere = (lat: number, lng: number) => {
+    setDraftPoints([[lat, lng]]);
+    setEditMode(true);
+    setFollowVessel(false);
+  };
+
   // Kart-interaksjon for draft (klikk for å legge punkt, mousemove for preview)
   const DraftInteractionHandler = () => {
     useMapEvent("mousemove", (e) => {
@@ -405,6 +503,15 @@ export const VesselMap = ({
         onSelectEnd?.(latlng[0], latlng[1]);
       }
       setSelectMode("none");
+    });
+    useMapEvent("contextmenu", (e) => {
+      const ev = (e as any).originalEvent as MouseEvent | undefined;
+      setContextMenu({
+        x: ev?.clientX ?? window.innerWidth / 2,
+        y: ev?.clientY ?? window.innerHeight / 2,
+        lat: e.latlng.lat,
+        lng: e.latlng.lng,
+      });
     });
     return null;
   };
@@ -750,24 +857,85 @@ export const VesselMap = ({
             lastUserPanRef={lastUserPanRef}
           />
         </MapContainer>
-        <Box
-          sx={{
-            position: "absolute",
-            top: 8,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 1200,
-          }}
+        {/* Context menu for map actions */}
+        <Menu
+          open={!!contextMenu}
+          onClose={() => setContextMenu(null)}
+          anchorReference="anchorPosition"
+          anchorPosition={
+            contextMenu
+              ? { top: contextMenu.y, left: contextMenu.x }
+              : undefined
+          }
         >
-          <Fab
-            size="small"
-            color={followVessel ? "primary" : "default"}
-            onClick={() => setFollowVessel((f) => !f)}
-            title={followVessel ? "Deaktiver auto-følge" : "Aktiver auto-følge"}
+          <MenuItem
+            onClick={() => {
+              if (!contextMenu) return;
+              startNewRouteHere(contextMenu.lat, contextMenu.lng);
+              setContextMenu(null);
+            }}
           >
-            {followVessel ? "Følger" : "Fri"}
-          </Fab>
-        </Box>
+            Start ny rute her
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              if (!contextMenu) return;
+              appendWaypointAt(contextMenu.lat, contextMenu.lng);
+              setContextMenu(null);
+            }}
+          >
+            Legg til veipunkt her
+          </MenuItem>
+          <MenuItem
+            disabled={
+              (editMode
+                ? draftPoints.length
+                : editableRoutePoints?.length || 0) < 2
+            }
+            onClick={() => {
+              if (!contextMenu) return;
+              insertWaypointAt(contextMenu.lat, contextMenu.lng);
+              setContextMenu(null);
+            }}
+          >
+            Sett inn på nærmeste legg
+          </MenuItem>
+          <Divider />
+          <MenuItem
+            onClick={() => {
+              if (!contextMenu) return;
+              onSelectStart?.(contextMenu.lat, contextMenu.lng);
+              setFollowVessel(false);
+              setContextMenu(null);
+            }}
+          >
+            Velg startpunkt her
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              if (!contextMenu) return;
+              onSelectEnd?.(contextMenu.lat, contextMenu.lng);
+              setFollowVessel(false);
+              setContextMenu(null);
+            }}
+          >
+            Velg destinasjon her
+          </MenuItem>
+          {/* Auto‑følge toggle fjernet inntil videre */}
+          <MenuItem
+            disabled={!editableRoutePoints || editableRoutePoints.length === 0}
+            onClick={() => {
+              setEditableRoutePoints(null);
+              setDraftPoints([]);
+              setSmoothedRoute(null);
+              setEditMode(false);
+              setContextMenu(null);
+            }}
+          >
+            Tøm rute
+          </MenuItem>
+        </Menu>
+        {/* Auto-følge toggle midlertidig skjult */}
         <Box
           sx={{
             position: "absolute",
