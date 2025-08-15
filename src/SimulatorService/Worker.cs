@@ -14,14 +14,12 @@ namespace SimulatorService
     {
         private readonly ILogger<Worker> _logger;
         private readonly SimulatorEngine _engine; // Denne er nå den samme singletonen som API-et bruker
-        private readonly AutopilotService _autopilot;
         private readonly TimeSpan _tickInterval = TimeSpan.FromMilliseconds(1000); // 1 Hz sim oppdatering
 
-        public Worker(ILogger<Worker> logger, SimulatorEngine engine, AutopilotService autopilot)
+        public Worker(ILogger<Worker> logger, SimulatorEngine engine)
         {
             _logger = logger;
             _engine = engine; // Bruk DI-singleton
-            _autopilot = autopilot;
 
             // Initialiser bare hvis posisjon ikke allerede er satt (lat = 0 && lon = 0 antas som ikke initialisert)
             if (Math.Abs(_engine.Latitude) < 0.0001 && Math.Abs(_engine.Longitude) < 0.0001)
@@ -82,7 +80,7 @@ namespace SimulatorService
                         }
                         catch
                         {
-                            // fallback: forsøk å lese gammel struktur og mappe
+                            // fallback: forsøv å lese gammel struktur og mappe
                             using var doc = JsonDocument.Parse(json);
                             var root = doc.RootElement;
                             if (root.TryGetProperty("WindSpeedKnots", out _))
@@ -118,10 +116,47 @@ namespace SimulatorService
                     }
                 });
 
+                // Abonner på rudderkommandoer fra AutopilotService
+                var rudderSubscription = natsConnection.SubscribeAsync("sim.commands.rudder", (sender, args) =>
+                {
+                    try
+                    {
+                        var json = System.Text.Encoding.UTF8.GetString(args.Message.Data);
+                        var command = JsonSerializer.Deserialize<RudderCommand>(json);
+                        if (command != null)
+                        {
+                            _engine.SetRudderAngle(command.RudderAngleDegrees);
+                            _logger.LogDebug($"Mottok rudderkommando: {command.RudderAngleDegrees}°");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Feil ved behandling av rudderkommando: {ex.Message}");
+                    }
+                });
+
+                // Abonner på thrustkommandoer fra AutopilotService
+                var thrustSubscription = natsConnection.SubscribeAsync("sim.commands.thrust", (sender, args) =>
+                {
+                    try
+                    {
+                        var json = System.Text.Encoding.UTF8.GetString(args.Message.Data);
+                        var command = JsonSerializer.Deserialize<ThrustCommand>(json);
+                        if (command != null)
+                        {
+                            _engine.SetThrustPercent(command.ThrustPercent);
+                            _logger.LogDebug($"Mottok thrustkommando: {command.ThrustPercent}%");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Feil ved behandling av thrustkommando: {ex.Message}");
+                    }
+                });
+
                 int tick = 0;
                 while (!stoppingToken.IsCancellationRequested)
                 {
-                    _autopilot.Update();
                     _engine.Update(_tickInterval);
 
                     // Publish navigation data to NATS (bruk ny record-konstruktør)

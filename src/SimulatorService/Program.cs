@@ -11,9 +11,6 @@ var builder = WebApplication.CreateBuilder(args);
 var simulatorEngine = new SimulatorEngine();
 builder.Services.AddSingleton(simulatorEngine);
 
-// Autopilot as singleton so API kan sette destinasjon
-builder.Services.AddSingleton<AutopilotService>();
-
 // NATS connection singleton (lazy)
 builder.Services.AddSingleton<IConnection>(_ =>
 {
@@ -155,7 +152,7 @@ app.MapPost("/api/simulator/speed", async (HttpContext context, SimulatorEngine 
 });
 
 // Start / oppdater en reise (setter evt startposisjon, destinasjon og cruise-fart)
-app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngine engine, AutopilotService autopilot, IConnection nats) =>
+app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngine engine, IConnection nats) =>
 {
     try
     {
@@ -193,19 +190,40 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngin
             engine.SetInitialPosition(startLat.Value, startLon.Value);
         }
 
-        if (cruise.HasValue)
-        {
-            autopilot.SetCruisingSpeed(cruise.Value);
-        }
-
+        // Lagre destinasjon i engine for visning (autopilot håndterer ruting)
         if (routePoints != null && routePoints.Count > 0)
         {
-            // Hvis startpos oppgis og første waypoint er forskjellig kan vi prepend start for full synlighet (valgfritt)
-            autopilot.SetRoute(routePoints);
+            var lastPoint = routePoints.Last();
+            engine.SetDestination(lastPoint.lat, lastPoint.lon);
         }
-        else
+        else if (endLat.HasValue && endLon.HasValue)
         {
-            autopilot.SetDestination(endLat!.Value, endLon!.Value);
+            engine.SetDestination(endLat.Value, endLon.Value);
+        }
+
+        // Publiser route/destination til autopilot via NATS
+        if (routePoints != null && routePoints.Count > 0)
+        {
+            var routeCommand = new
+            {
+                timestampUtc = DateTime.UtcNow,
+                waypoints = routePoints.Select(p => new { latitude = p.lat, longitude = p.lon }).ToArray(),
+                cruiseSpeedKnots = cruise ?? 15.0
+            };
+            var routeJson = JsonSerializer.Serialize(routeCommand);
+            nats.Publish("sim.commands.route", System.Text.Encoding.UTF8.GetBytes(routeJson));
+        }
+        else if (endLat.HasValue && endLon.HasValue)
+        {
+            var destCommand = new
+            {
+                timestampUtc = DateTime.UtcNow,
+                latitude = endLat.Value,
+                longitude = endLon.Value,
+                cruiseSpeedKnots = cruise ?? 15.0
+            };
+            var destJson = JsonSerializer.Serialize(destCommand);
+            nats.Publish("sim.commands.destination", System.Text.Encoding.UTF8.GetBytes(destJson));
         }
 
         var journeyCmd = new
@@ -233,9 +251,8 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngin
 });
 
 // Manuell stopp av fartøy / kanseller reise
-app.MapPost("/api/simulator/stop", (SimulatorEngine engine, AutopilotService autopilot, IConnection nats) =>
+app.MapPost("/api/simulator/stop", (SimulatorEngine engine, IConnection nats) =>
 {
-    autopilot.Cancel();
     engine.SetDesiredSpeed(0.0);
     var stopEvt = new { timestampUtc = DateTime.UtcNow, reason = "manual" };
     PublishCommandAndLog(nats, "sim.commands.stop", stopEvt, "SimulatorService", "Manual stop issued");
@@ -243,47 +260,45 @@ app.MapPost("/api/simulator/stop", (SimulatorEngine engine, AutopilotService aut
 }).WithName("SimulatorStop");
 
 // Destination / progress status
-app.MapGet("/api/simulator/destination", (SimulatorEngine engine, AutopilotService autopilot) =>
+app.MapGet("/api/simulator/destination", (SimulatorEngine engine) =>
 {
     if (!engine.HasDestination || engine.TargetLatitude == null || engine.TargetLongitude == null)
         return Results.Ok(new { hasDestination = false });
 
-    var (hasTarget, distanceNm) = autopilot.GetDestinationStatus(engine.Latitude, engine.Longitude);
-    var ap = autopilot.GetDebugState();
+    double distanceNm = SimulatorEngine.CalculateDistanceMeters(
+        engine.Latitude, engine.Longitude,
+        engine.TargetLatitude.Value, engine.TargetLongitude.Value) / 1852.0;
+
     double? etaMinutes = null;
-    if (distanceNm.HasValue && engine.Speed > 0.1)
+    if (engine.Speed > 0.1)
     {
-        etaMinutes = (distanceNm.Value / engine.Speed) * 60.0; // nm / kn = hours → *60 = minutes
+        etaMinutes = (distanceNm / engine.Speed) * 60.0; // nm / kn = hours → *60 = minutes
     }
+
     return Results.Ok(new
     {
-        hasDestination = hasTarget,
+        hasDestination = true,
         targetLatitude = engine.TargetLatitude,
         targetLongitude = engine.TargetLongitude,
         distanceNm,
         etaMinutes,
-        hasArrived = ap.RouteCompleted
+        hasArrived = engine.HasArrived
     });
 });
 
 // Debug endpoint to inspect internal state
-app.MapGet("/api/simulator/debug", (SimulatorEngine engine, AutopilotService autopilot) =>
+app.MapGet("/api/simulator/debug", (SimulatorEngine engine) =>
 {
-    var ap = autopilot.GetDebugState();
     return Results.Ok(new
     {
-        engine = new
-        {
-            engine.Latitude,
-            engine.Longitude,
-            engine.Heading,
-            engine.Speed,
-            engine.HasDestination,
-            engine.HasArrived,
-            engine.TargetLatitude,
-            engine.TargetLongitude
-        },
-        autopilot = ap
+        latitude = engine.Latitude,
+        longitude = engine.Longitude,
+        heading = engine.Heading,
+        speed = engine.Speed,
+        hasDestination = engine.HasDestination,
+        targetLatitude = engine.TargetLatitude,
+        targetLongitude = engine.TargetLongitude,
+        hasArrived = engine.HasArrived
     });
 });
 

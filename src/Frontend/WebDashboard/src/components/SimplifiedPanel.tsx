@@ -99,7 +99,7 @@ export const SimplifiedPanel: React.FC<SimplifiedPanelProps> = ({
           disabled={!canStartJourney || running}
           onClick={onStart}
         >
-          Start (20 kn)
+          Start
         </Button>
         <Button
           variant="contained"

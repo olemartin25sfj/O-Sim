@@ -25,6 +25,10 @@ namespace SimulatorService
         private double? _targetLon = null;
         private const double ArrivalThresholdMeters = 25.0;
 
+        // Direktkontroll (for kommandoer fra AutopilotService)
+        private double _rudderAngle = 0.0; // grader, -35 til +35
+        private double _thrustPercent = 0.0; // 0-100%
+
         // Autopilot status
         public bool HasDestination => _targetLat.HasValue && _targetLon.HasValue;
         public bool HasArrived { get; private set; } = false;
@@ -86,25 +90,29 @@ namespace SimulatorService
             _currentDirection = NormalizeAngle(currentDirection);
         }
 
+        public void SetRudderAngle(double angle)
+        {
+            _rudderAngle = Math.Clamp(angle, -35.0, 35.0);
+        }
+
+        public void SetThrustPercent(double percent)
+        {
+            _thrustPercent = Math.Clamp(percent, 0.0, 100.0);
+        }
+
         // --- Hovedoppdatering ---
         public void Update(TimeSpan deltaTime)
         {
             double seconds = deltaTime.TotalSeconds;
 
-            // AutopilotService eller annen ekstern logikk må nå sette ønsket heading
-
-            // 1. Heading – dynamisk sving basert på hastighet
-            double headingError = NormalizeAngle(_desiredHeading - _heading);
-            if (headingError > 180.0) headingError -= 360.0;
-
-            double effectiveTurnRate = BaseTurnRate + (_speed * TurnRatePerKnot);
-            double maxHeadingChange = effectiveTurnRate * seconds;
-            double headingChange = Math.Clamp(headingError, -maxHeadingChange, maxHeadingChange);
-
+            // 1. Heading – bruk ruddervinkel for svinging
+            double rudderEffect = _rudderAngle * 0.5; // grader/sekund per grad rudder
+            double headingChange = rudderEffect * seconds;
             _heading = NormalizeAngle(_heading + headingChange);
 
-            // 2. Fart – akselerasjon mot ønsket fart
-            double speedDelta = _desiredSpeed - _speed;
+            // 2. Fart – bruk thrust for akselerasjon
+            double targetSpeed = (_thrustPercent / 100.0) * 20.0; // max 20 knop ved 100% thrust
+            double speedDelta = targetSpeed - _speed;
             double speedChange = Math.Clamp(speedDelta, -Acceleration * seconds, Acceleration * seconds);
             _speed += speedChange;
 
