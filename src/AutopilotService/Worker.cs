@@ -13,6 +13,8 @@ public class Worker : BackgroundService
     private double _targetSpeed = 0.0;
     private double _lastError = 0.0;
     private double _integralError = 0.0;
+    private List<(double lat, double lon)>? _routeWaypoints;
+    private int _currentWaypointIndex = 0;
 
     // PID-konstanter for kursregulering
     private const double Kp = 2.0;
@@ -137,11 +139,91 @@ public class Worker : BackgroundService
                 }
             });
 
+            // Abonner på rute-kommandoer
+            var routeSubscription = natsConnection.SubscribeAsync("sim.commands.route", (sender, args) =>
+            {
+                try
+                {
+                    string message = System.Text.Encoding.UTF8.GetString(args.Message.Data);
+                    var routeCommand = JsonSerializer.Deserialize<JsonElement>(message);
+
+                    if (routeCommand.TryGetProperty("waypoints", out var waypointsElement) &&
+                        waypointsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        var waypoints = new List<(double lat, double lon)>();
+                        foreach (var wp in waypointsElement.EnumerateArray())
+                        {
+                            if (wp.TryGetProperty("latitude", out var lat) &&
+                                wp.TryGetProperty("longitude", out var lon))
+                            {
+                                waypoints.Add((lat.GetDouble(), lon.GetDouble()));
+                            }
+                        }
+
+                        if (waypoints.Count > 0)
+                        {
+                            _routeWaypoints = waypoints;
+                            _currentWaypointIndex = 0;
+                            _targetCourse = CalculateBearing(_lastNavData?.Latitude ?? 0, _lastNavData?.Longitude ?? 0,
+                                                           waypoints[0].lat, waypoints[0].lon);
+                            _logger.LogInformation($"AutopilotService: Mottok rute med {waypoints.Count} waypoints, setter kurs mot første waypoint: {_targetCourse:F1}°");
+                        }
+                    }
+
+                    if (routeCommand.TryGetProperty("cruiseSpeedKnots", out var speedElement))
+                    {
+                        _targetSpeed = speedElement.GetDouble();
+                        _logger.LogInformation($"AutopilotService: Setter cruise-fart til {_targetSpeed:F1} knop");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"AutopilotService: Feil ved behandling av rute-kommando: {ex.Message}");
+                }
+            });
+
             // Hovedløkke for autopilot-regulering
             while (!stoppingToken.IsCancellationRequested)
             {
                 if (_lastNavData != null)
                 {
+                    // Sjekk waypoint-navigasjon
+                    if (_routeWaypoints != null && _currentWaypointIndex < _routeWaypoints.Count)
+                    {
+                        var currentWaypoint = _routeWaypoints[_currentWaypointIndex];
+                        double distanceToWaypoint = CalculateDistance(_lastNavData.Latitude, _lastNavData.Longitude,
+                                                                     currentWaypoint.lat, currentWaypoint.lon);
+
+                        // Hvis vi er nær nok waypoint (50 meter), gå til neste
+                        if (distanceToWaypoint < 50.0)
+                        {
+                            _currentWaypointIndex++;
+                            _logger.LogInformation($"AutopilotService: Nådde waypoint {_currentWaypointIndex}, {_routeWaypoints.Count - _currentWaypointIndex} waypoints igjen");
+
+                            if (_currentWaypointIndex < _routeWaypoints.Count)
+                            {
+                                // Sett kurs mot neste waypoint
+                                var nextWaypoint = _routeWaypoints[_currentWaypointIndex];
+                                _targetCourse = CalculateBearing(_lastNavData.Latitude, _lastNavData.Longitude,
+                                                               nextWaypoint.lat, nextWaypoint.lon);
+                                _logger.LogInformation($"AutopilotService: Setter kurs mot waypoint {_currentWaypointIndex + 1}: {_targetCourse:F1}°");
+                            }
+                            else
+                            {
+                                // Rute fullført
+                                _logger.LogInformation("AutopilotService: Rute fullført!");
+                                _targetSpeed = 0.0; // Stopp
+                                _routeWaypoints = null; // Nullstill rute
+                            }
+                        }
+                        else
+                        {
+                            // Oppdater kurs mot nåværende waypoint
+                            _targetCourse = CalculateBearing(_lastNavData.Latitude, _lastNavData.Longitude,
+                                                           currentWaypoint.lat, currentWaypoint.lon);
+                        }
+                    }
+
                     // PID-regulering for kurs
                     double currentHeading = _lastNavData.HeadingDegrees;
                     double error = CalculateHeadingError(currentHeading, _targetCourse);
@@ -201,5 +283,33 @@ public class Worker : BackgroundService
             error += 360.0;
 
         return error;
+    }
+
+    private double CalculateBearing(double lat1, double lon1, double lat2, double lon2)
+    {
+        // Konverter til radianer
+        double dLon = (lon2 - lon1) * Math.PI / 180.0;
+        double lat1Rad = lat1 * Math.PI / 180.0;
+        double lat2Rad = lat2 * Math.PI / 180.0;
+
+        double y = Math.Sin(dLon) * Math.Cos(lat2Rad);
+        double x = Math.Cos(lat1Rad) * Math.Sin(lat2Rad) - Math.Sin(lat1Rad) * Math.Cos(lat2Rad) * Math.Cos(dLon);
+
+        double bearing = Math.Atan2(y, x) * 180.0 / Math.PI;
+
+        // Normaliser til [0, 360]
+        return (bearing + 360.0) % 360.0;
+    }
+
+    private double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371000; // Jordens radius i meter
+        double dLat = (lat2 - lat1) * Math.PI / 180.0;
+        double dLon = (lon2 - lon1) * Math.PI / 180.0;
+        double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                   Math.Cos(lat1 * Math.PI / 180.0) * Math.Cos(lat2 * Math.PI / 180.0) *
+                   Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return R * c; // Distanse i meter
     }
 }
