@@ -26,7 +26,7 @@ namespace SimulatorService
             // Initialiser bare hvis posisjon ikke allerede er satt (lat = 0 && lon = 0 antas som ikke initialisert)
             if (Math.Abs(_engine.Latitude) < 0.0001 && Math.Abs(_engine.Longitude) < 0.0001)
             {
-                _engine.SetInitialPosition(59.4167, 10.4833); // Horten havn
+                _engine.SetInitialPosition(59.41497, 10.49375); // Horten havn
             }
 
             // (Re)sett et tilfeldig miljø – API / env updates vil overskrive fortløpende
