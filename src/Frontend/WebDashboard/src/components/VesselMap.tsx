@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -84,10 +84,7 @@ interface Route {
   modified?: boolean; // true once user drags a waypoint or renames
 }
 
-interface StartEndState {
-  start?: [number, number];
-  end?: [number, number];
-}
+// Removed StartEndState/local persistence; rely on props selectedStart/selectedEnd from parent
 
 export const VesselMap = ({
   navigation,
@@ -112,10 +109,7 @@ export const VesselMap = ({
   const [selectMode, setSelectMode] = useState<"none" | "start" | "end">(
     "none"
   );
-  const [startEnd, setStartEnd] = useState<StartEndState>({}); // retained for local persistence fallback
-  const [activeGenerated, setActiveGenerated] = useState<
-    [number, number][] | null
-  >(null);
+  // Removed start/end local cache and auto-generated great-circle line
   // Enkel interaktiv rute (brukerens manuelle veipunkter: start + mid + end)
   const [editableRoutePoints, setEditableRoutePoints] = useState<
     [number, number][] | null
@@ -221,7 +215,12 @@ export const VesselMap = ({
     }
   }, [selectedRouteId, routes, onActiveRouteChange, editableRoutePoints]);
 
-  // Fjern automatisk oppretting av rute – styres nå av editMode + brukerklikk
+  // Hvis bruker har valgt start og dest, sett en enkel rute [start, end] som utgangspunkt
+  useEffect(() => {
+    if (!editableRoutePoints && selectedStart && selectedEnd) {
+      setEditableRoutePoints([selectedStart, selectedEnd]);
+    }
+  }, [selectedStart, selectedEnd, editableRoutePoints]);
 
   // Catmull-Rom smoothing (planar approx). Returnerer tett samplet kurve.
   function smoothRoute(points: [number, number][], spacingMeters = 120) {
@@ -299,8 +298,7 @@ export const VesselMap = ({
     }
   }, [editableRoutePoints]);
 
-  // Hjelp: legg inn nytt veipunkt nærmest segment
-  // Gammel drag-innsetting fjernet
+  // Hjelp: drag/innsetting håndteres via markører og draft
 
   // Start innsetting + dragging: returnerer indeks for ny node
   const commitDraftToEditable = () => {
@@ -385,91 +383,7 @@ export const VesselMap = ({
     return () => window.removeEventListener("keydown", handler);
   }, [editMode, draftPoints]);
 
-  // Persist start/end & generated route
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("o-sim.startEnd");
-      if (raw) setStartEnd(JSON.parse(raw));
-      const rawGen = localStorage.getItem("o-sim.generatedRoute");
-      if (rawGen) setActiveGenerated(JSON.parse(rawGen));
-    } catch {
-      /*ignore*/
-    }
-  }, []);
-  useEffect(() => {
-    try {
-      localStorage.setItem("o-sim.startEnd", JSON.stringify(startEnd));
-    } catch {}
-  }, [startEnd]);
-  useEffect(() => {
-    try {
-      if (activeGenerated)
-        localStorage.setItem(
-          "o-sim.generatedRoute",
-          JSON.stringify(activeGenerated)
-        );
-      else localStorage.removeItem("o-sim.generatedRoute");
-    } catch {}
-  }, [activeGenerated]);
-
-  // Great-circle generation between start and end (approximate) with segment length ~2nm
-  const generateGreatCircle = useCallback(
-    (a: [number, number], b: [number, number], segmentNm = 2) => {
-      const toRad = (d: number) => (d * Math.PI) / 180;
-      const toDeg = (r: number) => (r * 180) / Math.PI;
-      const Rm = 6371000; // meters
-      const distanceMeters = (() => {
-        const dLat = toRad(b[0] - a[0]);
-        const dLon = toRad(b[1] - a[1]);
-        const lat1 = toRad(a[0]);
-        const lat2 = toRad(b[0]);
-        const h =
-          Math.sin(dLat / 2) ** 2 +
-          Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-        return 2 * Rm * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-      })();
-      if (distanceMeters === 0) return [a];
-      const segmentMeters = segmentNm * 1852;
-      const steps = Math.max(1, Math.round(distanceMeters / segmentMeters));
-      const lat1 = toRad(a[0]);
-      const lon1 = toRad(a[1]);
-      const lat2 = toRad(b[0]);
-      const lon2 = toRad(b[1]);
-      const d = (() => {
-        const dLat = lat2 - lat1;
-        const dLon = lon2 - lon1;
-        const h =
-          Math.sin(dLat / 2) ** 2 +
-          Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-        return 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-      })();
-      const points: [number, number][] = [];
-      for (let i = 0; i <= steps; i++) {
-        const f = i / steps;
-        const A = Math.sin((1 - f) * d) / Math.sin(d);
-        const B = Math.sin(f * d) / Math.sin(d);
-        const x =
-          A * Math.cos(lat1) * Math.cos(lon1) +
-          B * Math.cos(lat2) * Math.cos(lon2);
-        const y =
-          A * Math.cos(lat1) * Math.sin(lon1) +
-          B * Math.cos(lat2) * Math.sin(lon2);
-        const z = A * Math.sin(lat1) + B * Math.sin(lat2);
-        const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
-        const lon = Math.atan2(y, x);
-        points.push([toDeg(lat), ((toDeg(lon) + 540) % 360) - 180]);
-      }
-      return points;
-    },
-    []
-  );
-
-  // Build generated route when both points exist
-  useEffect(() => {
-    if (startEnd.start && startEnd.end) {
-      setActiveGenerated(generateGreatCircle(startEnd.start, startEnd.end, 2));
-    }
-  }, [startEnd, generateGreatCircle]);
+  // Removed great-circle auto generation and persistence
 
   // Removed preview route detail effect
 
@@ -487,10 +401,8 @@ export const VesselMap = ({
       const latlng: [number, number] = [e.latlng.lat, e.latlng.lng];
       if (selectMode === "start") {
         onSelectStart?.(latlng[0], latlng[1]);
-        setStartEnd((prev) => ({ ...prev, start: latlng }));
       } else if (selectMode === "end") {
         onSelectEnd?.(latlng[0], latlng[1]);
-        setStartEnd((prev) => ({ ...prev, end: latlng }));
       }
       setSelectMode("none");
     });
@@ -654,14 +566,7 @@ export const VesselMap = ({
             );
           })}
           {/* Generated start->end route */}
-          {activeGenerated && (
-            <Polyline
-              positions={activeGenerated}
-              color="#ff9800"
-              weight={4}
-              opacity={0.9}
-            />
-          )}
+          {/* Removed orange generated line to avoid confusion */}
           {/* Interaktiv redigerbar rute (vises når start+slutt valgt) */}
           {/* Draft polyline (mens bruker tegner) */}
           {editMode && draftPoints.length > 0 && (
@@ -754,9 +659,9 @@ export const VesselMap = ({
             ))}
           {editMode && <DraftInteractionHandler />}
           {/* Preview removed */}
-          {(selectedStart || startEnd.start) && (
+          {selectedStart && (
             <Marker
-              position={selectedStart || (startEnd.start as [number, number])}
+              position={selectedStart}
               icon={
                 new Icon({
                   iconUrl: "/marker-start.svg",
@@ -766,9 +671,9 @@ export const VesselMap = ({
               }
             />
           )}
-          {(selectedEnd || startEnd.end) && (
+          {selectedEnd && (
             <Marker
-              position={selectedEnd || (startEnd.end as [number, number])}
+              position={selectedEnd}
               icon={
                 new Icon({
                   iconUrl: "/marker-end.svg",
@@ -888,7 +793,12 @@ export const VesselMap = ({
                   commitDraftToEditable();
                 } else {
                   // Start ny draft med eksisterende rute (om finnes) ellers tom
-                  setDraftPoints(editableRoutePoints || []);
+                  // Hvis start+slutt finnes men ingen rute, init med [start, end]
+                  if (!editableRoutePoints && selectedStart && selectedEnd) {
+                    setDraftPoints([selectedStart, selectedEnd]);
+                  } else {
+                    setDraftPoints(editableRoutePoints || []);
+                  }
                   setEditMode(true);
                 }
               }}
@@ -950,27 +860,7 @@ export const VesselMap = ({
               D
             </Fab>
           </Tooltip>
-          {activeGenerated && (
-            <Tooltip title="Legg generert rute til listen">
-              <Fab
-                size="small"
-                color="info"
-                onClick={() =>
-                  setRoutes((r) => [
-                    ...r,
-                    {
-                      id: generateId(),
-                      name: `Generated ${r.length + 1}`,
-                      points: activeGenerated,
-                      source: "generated",
-                    },
-                  ])
-                }
-              >
-                +
-              </Fab>
-            </Tooltip>
-          )}
+          {/* Removed add-generated-route button */}
           {routes.length > 0 && (
             <Tooltip title="Fjern alle ruter">
               <Fab
