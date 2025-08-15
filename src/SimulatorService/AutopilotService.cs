@@ -112,7 +112,36 @@ namespace SimulatorService
                 var (clat, clon) = _waypoints.Peek();
                 double desiredCourse = CalculateBearing(currentLat, currentLon, clat, clon);
                 _engine.SetDesiredHeading(desiredCourse);
-                _engine.SetDesiredSpeed(_cruisingSpeed);
+
+                // Adaptiv nedbremsing for siste etappe for å unngå overskyting
+                if (_waypoints.Count == 1)
+                {
+                    // Estimér stoppdistanse basert på nåværende fart og antatt deselerasjon ~1 kn/s (matcher engine)
+                    double currentSpeed = _engine.Speed; // kn
+                    const double decelKnPerSec = 1.0; // må holdes i sync med Engine Acceleration
+                    double timeToStopSec = currentSpeed / Math.Max(0.1, decelKnPerSec);
+                    double stoppingDistanceNm = (currentSpeed / 2.0) * (timeToStopSec / 3600.0); // nm
+                    double slowStartNm = Math.Max(0.2, stoppingDistanceNm * 2.0); // start bremsing litt før teoretisk stopp
+
+                    double targetSpeed = _cruisingSpeed;
+                    if (distanceNm <= slowStartNm)
+                    {
+                        // Lineær nedtrapping mot lav styrefart, og lavere helt nær mål
+                        const double minSteerage = 2.0; // kn
+                        double factor = Math.Clamp(distanceNm / slowStartNm, 0.0, 1.0);
+                        targetSpeed = Math.Max(minSteerage, _cruisingSpeed * factor);
+                        if (distanceNm < 0.02) // ~37 m
+                        {
+                            targetSpeed = Math.Min(targetSpeed, 1.0);
+                        }
+                    }
+                    _engine.SetDesiredSpeed(targetSpeed);
+                }
+                else
+                {
+                    // Mellometapper: hold cruise for å sikre fremdrift mellom veipunkter
+                    _engine.SetDesiredSpeed(_cruisingSpeed);
+                }
             }
         }
 
