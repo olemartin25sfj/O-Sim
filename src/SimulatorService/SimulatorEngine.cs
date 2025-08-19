@@ -2,8 +2,19 @@ using System;
 
 namespace SimulatorService
 {
+    public enum VesselState
+    {
+        Drifting,       // Fri drift (kun miljøkrefter)
+        Anchored,       // Ankret - ignorerer alle navigasjonskommandoer
+        Navigating,     // Aktiv navigasjon mot mål
+        Maneuvering     // Manuell kontroll (direktekommandoer)
+    }
+
     public class SimulatorEngine
     {
+        // Vessel State Management
+        private VesselState _currentState = VesselState.Drifting;
+
         // Interne tilstandsfelt
         private double _latitude;
         private double _longitude;
@@ -33,7 +44,7 @@ namespace SimulatorService
         private bool _isAnchored = false;
         private double _anchorLat = 0.0;
         private double _anchorLon = 0.0;
-        private const double MaxAnchorDrift = 10.0; // meter fra ankerposisjon
+        private const double MaxAnchorDrift = 5.0; // Redusert fra 10.0 for tettere hold
 
         // Autopilot status
         public bool HasDestination => _targetLat.HasValue && _targetLon.HasValue;
@@ -41,6 +52,7 @@ namespace SimulatorService
         public double? TargetLatitude => _targetLat;
         public double? TargetLongitude => _targetLon;
         public bool IsAnchored => _isAnchored;
+        public VesselState CurrentState => _currentState;
 
         // Konstanter
         private const double BaseTurnRate = 1.0;        // grader per sekund
@@ -70,6 +82,12 @@ namespace SimulatorService
             _targetLat = lat;
             _targetLon = lon;
             HasArrived = false; // Alltid nullstill ankomststatus ved ny destinasjon
+
+            // State transition til Navigating hvis ikke ankret
+            if (_currentState != VesselState.Anchored)
+            {
+                _currentState = VesselState.Navigating;
+            }
         }
 
         public void ClearDestination()
@@ -77,6 +95,12 @@ namespace SimulatorService
             _targetLat = null;
             _targetLon = null;
             HasArrived = false; // Nullstill ankomststatus når destinasjon fjernes
+
+            // State transition til Drifting hvis ikke ankret
+            if (_currentState == VesselState.Navigating)
+            {
+                _currentState = VesselState.Drifting;
+            }
         }
 
         public void ResetNavigationState()
@@ -106,12 +130,32 @@ namespace SimulatorService
 
         public void SetRudderAngle(double angle)
         {
-            _rudderAngle = Math.Clamp(angle, -35.0, 35.0);
+            // Kun prosesser rudder-kommandoer hvis ikke ankret
+            if (_currentState != VesselState.Anchored)
+            {
+                _rudderAngle = Math.Clamp(angle, -35.0, 35.0);
+
+                // Hvis vi får manuell rudder-kommando, bytt til Maneuvering modus
+                if (Math.Abs(angle) > 0.1) // Ikke-null rudder input
+                {
+                    _currentState = VesselState.Maneuvering;
+                }
+            }
         }
 
         public void SetThrustPercent(double percent)
         {
-            _thrustPercent = Math.Clamp(percent, 0.0, 100.0);
+            // Kun prosesser thrust-kommandoer hvis ikke ankret
+            if (_currentState != VesselState.Anchored)
+            {
+                _thrustPercent = Math.Clamp(percent, 0.0, 100.0);
+
+                // Hvis vi får manuell thrust-kommando, bytt til Maneuvering modus
+                if (percent > 0.1) // Ikke-null thrust input
+                {
+                    _currentState = VesselState.Maneuvering;
+                }
+            }
         }
 
         public void SetAnchored(bool anchored)
@@ -122,6 +166,20 @@ namespace SimulatorService
                 // Sett ankerposisjon til gjeldende posisjon
                 _anchorLat = _latitude;
                 _anchorLon = _longitude;
+
+                // State transition til Anchored
+                _currentState = VesselState.Anchored;
+
+                // Umiddelbart stopp
+                _speed = 0.0;
+                _desiredSpeed = 0.0;
+                _thrustPercent = 0.0;
+                _rudderAngle = 0.0;
+            }
+            else
+            {
+                // Frigir anker - gå til drifting eller navigering
+                _currentState = HasDestination ? VesselState.Navigating : VesselState.Drifting;
             }
         }
 
@@ -146,19 +204,24 @@ namespace SimulatorService
 
             var (dxEnv, dyEnv) = CalculateEnvironmentalInfluence(seconds);
 
-            // Hvis ankret, reduser miljøpåvirkning betydelig
+            // Hvis ankret, reduser miljøpåvirkning drastisk og øk motstand
             if (_isAnchored)
             {
-                dxEnv *= 0.05; // Reduser drift til 5% av normal påvirkning (fra 10%)
-                dyEnv *= 0.05;
+                // Kraftig reduksjon av miljøpåvirkning når ankret
+                dxEnv *= 0.01; // Redusert fra 0.05 til 0.01 (1% av normal påvirkning)
+                dyEnv *= 0.01;
+
+                // Stopp skipet når ankret - sett thrust til 0 og reduser fart kraftig
+                _thrustPercent = 0.0;
+                _speed *= 0.95; // Reduser fart raskt når ankret
 
                 // Sjekk om vi har driftet for langt fra ankerposisjon
                 double currentDrift = CalculateDistanceMeters(_latitude, _longitude, _anchorLat, _anchorLon);
                 if (currentDrift > MaxAnchorDrift)
                 {
-                    // Sterk tilbaketrekking mot ankerposisjon
+                    // Meget sterk tilbaketrekking mot ankerposisjon
                     double bearing = CalculateBearing(_latitude, _longitude, _anchorLat, _anchorLon);
-                    double pullDistance = (currentDrift - MaxAnchorDrift) / 6371000.0 * 60.0 * 2.0; // meter -> nm, dobbel styrke
+                    double pullDistance = (currentDrift - MaxAnchorDrift) / 6371000.0 * 60.0 * 5.0; // Økt fra 2.0 til 5.0
 
                     double pullDy = pullDistance * Math.Cos(DegToRad(bearing));
                     double pullDx = pullDistance * Math.Sin(DegToRad(bearing));
@@ -167,9 +230,10 @@ namespace SimulatorService
                     dyEnv += pullDy;
                 }
 
-                // Legg til generell anker-motstand som alltid drar mot ankerposisjon
+                // Sterkere generell anker-motstand som alltid drar mot ankerposisjon
                 double anchorBearing = CalculateBearing(_latitude, _longitude, _anchorLat, _anchorLon);
-                double anchorPull = 0.0001; // nm per oppdatering
+                double distanceToAnchor = CalculateDistanceMeters(_latitude, _longitude, _anchorLat, _anchorLon);
+                double anchorPull = Math.Min(0.0005 * (distanceToAnchor / MaxAnchorDrift), 0.002); // Progressiv pull, økt fra 0.0001
 
                 double anchorDy = anchorPull * Math.Cos(DegToRad(anchorBearing));
                 double anchorDx = anchorPull * Math.Sin(DegToRad(anchorBearing));

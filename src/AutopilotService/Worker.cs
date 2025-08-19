@@ -15,7 +15,6 @@ public class Worker : BackgroundService
     private double _integralError = 0.0;
     private List<(double lat, double lon)>? _routeWaypoints;
     private int _currentWaypointIndex = 0;
-    private bool _wasAnchored = false; // For å spore anker-tilstand
 
     // PID-konstanter for kursregulering (justert for mer stabil navigasjon)
     private const double Kp = 0.8;  // Redusert fra 2.0 for mindre aggressiv respons
@@ -35,8 +34,6 @@ public class Worker : BackgroundService
         _integralError = 0.0;
         _targetCourse = 0.0;
         _targetSpeed = 0.0;
-        // Tilbakestill anker-tilstand så den kan settes på nytt
-        _wasAnchored = false;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -208,7 +205,6 @@ public class Worker : BackgroundService
 
                             // Heis ankeret umiddelbart når ny rute startes
                             SendAnchorCommand(natsConnection, false);
-                            _wasAnchored = false;
                             _logger.LogInformation("AutopilotService: Heiser anker for ny rute");
                         }
                     }
@@ -258,7 +254,6 @@ public class Worker : BackgroundService
 
                         // Heis ankeret umiddelbart når ny destinasjon settes
                         SendAnchorCommand(natsConnection, false);
-                        _wasAnchored = false;
                         _logger.LogInformation("AutopilotService: Heiser anker for ny destinasjon");
                     }
 
@@ -279,23 +274,18 @@ public class Worker : BackgroundService
             {
                 if (_lastNavData != null)
                 {
-                    // Håndter anker-tilstand basert på om vi har aktiv rute
+                    // Simpel logikk: Hvis ingen aktiv rute, send anker-kommando
                     bool hasActiveRoute = _routeWaypoints != null && _currentWaypointIndex < _routeWaypoints.Count;
-                    bool shouldBeAnchored = !hasActiveRoute;
 
-                    if (shouldBeAnchored && !_wasAnchored)
+                    if (!hasActiveRoute)
                     {
-                        // Senk ankeret
+                        // Send anker-kommando (SimulatorEngine bestemmer om den skal ignoreres)
                         SendAnchorCommand(natsConnection, true);
-                        _wasAnchored = true;
-                        _logger.LogInformation("AutopilotService: Anker senket - ingen aktiv rute");
                     }
-                    else if (!shouldBeAnchored && _wasAnchored)
+                    else
                     {
-                        // Heis ankeret
+                        // Send frigjøring av anker
                         SendAnchorCommand(natsConnection, false);
-                        _wasAnchored = false;
-                        _logger.LogInformation("AutopilotService: Anker heist - aktiv rute startet");
                     }
 
                     // Sjekk waypoint-navigasjon
@@ -324,10 +314,7 @@ public class Worker : BackgroundService
                                 // Rute fullført - bruk reset-metoden
                                 _logger.LogInformation("AutopilotService: Rute fullført!");
                                 ResetRouteState();
-                                // Senk ankeret når rute er fullført
-                                SendAnchorCommand(natsConnection, true);
-                                _wasAnchored = true;
-                                _logger.LogInformation("AutopilotService: Anker senket - rute fullført");
+                                // Anker-kommando sendes i hovedlogikken over
                             }
                         }
                         else
@@ -338,47 +325,53 @@ public class Worker : BackgroundService
                         }
                     }
 
-                    // PID-regulering for kurs
-                    double currentHeading = _lastNavData.HeadingDegrees;
-                    double error = CalculateHeadingError(currentHeading, _targetCourse);
-
-                    _integralError += error;
-                    double derivative = error - _lastError;
-
-                    double pidOutput = (Kp * error) + (Ki * _integralError) + (Kd * derivative);
-
-                    // Begrens rudderutslag til ±35 grader
-                    double rudderAngle = Math.Clamp(pidOutput, -35.0, 35.0);
-
-                    // Publiser rudderkommando
-                    var rudderCommand = new RudderCommand(
-                        TimestampUtc: DateTime.UtcNow,
-                        RudderAngleDegrees: rudderAngle
-                    );
-
-                    var rudderJson = JsonSerializer.Serialize(rudderCommand);
-                    natsConnection.Publish("sim.commands.rudder", System.Text.Encoding.UTF8.GetBytes(rudderJson));
-
-                    // Enkel fartsregulering (kan forbedres)
-                    double currentSpeed = _lastNavData.SpeedKnots;
-                    double speedError = _targetSpeed - currentSpeed;
-                    double thrustPercent = Math.Clamp(50.0 + (speedError * 10.0), 0.0, 100.0);
-
-                    // Publiser thrustkommando
-                    var thrustCommand = new ThrustCommand(
-                        TimestampUtc: DateTime.UtcNow,
-                        ThrustPercent: thrustPercent
-                    );
-
-                    var thrustJson = JsonSerializer.Serialize(thrustCommand);
-                    natsConnection.Publish("sim.commands.thrust", System.Text.Encoding.UTF8.GetBytes(thrustJson));
-
-                    _lastError = error;
-
-                    if (_logger.IsEnabled(LogLevel.Debug))
+                    // Send navigasjons-kommandoer hvis vi har aktiv rute
+                    if (hasActiveRoute)
                     {
-                        _logger.LogDebug($"AutopilotService: Kurs={currentHeading:F1}° Mål={_targetCourse:F1}° Feil={error:F1}° Ror={rudderAngle:F1}° Thrust={thrustPercent:F1}%");
+                        // PID-regulering for kurs
+                        double currentHeading = _lastNavData.HeadingDegrees;
+                        double error = CalculateHeadingError(currentHeading, _targetCourse);
+
+                        _integralError += error;
+                        double derivative = error - _lastError;
+
+                        double pidOutput = (Kp * error) + (Ki * _integralError) + (Kd * derivative);
+
+                        // Begrens rudderutslag til ±35 grader
+                        double rudderAngle = Math.Clamp(pidOutput, -35.0, 35.0);
+
+                        // Publiser rudderkommando
+                        var rudderCommand = new RudderCommand(
+                            TimestampUtc: DateTime.UtcNow,
+                            RudderAngleDegrees: rudderAngle
+                        );
+
+                        var rudderJson = JsonSerializer.Serialize(rudderCommand);
+                        natsConnection.Publish("sim.commands.rudder", System.Text.Encoding.UTF8.GetBytes(rudderJson));
+
+                        // Enkel fartsregulering (kan forbedres)
+                        double currentSpeed = _lastNavData.SpeedKnots;
+                        double speedError = _targetSpeed - currentSpeed;
+                        double thrustPercent = Math.Clamp(50.0 + (speedError * 10.0), 0.0, 100.0);
+
+                        // Publiser thrustkommando
+                        var thrustCommand = new ThrustCommand(
+                            TimestampUtc: DateTime.UtcNow,
+                            ThrustPercent: thrustPercent
+                        );
+
+                        var thrustJson = JsonSerializer.Serialize(thrustCommand);
+                        natsConnection.Publish("sim.commands.thrust", System.Text.Encoding.UTF8.GetBytes(thrustJson));
+
+                        _lastError = error;
+
+                        if (_logger.IsEnabled(LogLevel.Debug))
+                        {
+                            _logger.LogDebug($"AutopilotService: Kurs={currentHeading:F1}° Mål={_targetCourse:F1}° Feil={error:F1}° Ror={rudderAngle:F1}° Thrust={thrustPercent:F1}%");
+                        }
                     }
+                    // SimulatorEngine håndterer all anchor-logikk
+
                 }
 
                 await Task.Delay(1000, stoppingToken); // 1 Hz regulering for mer stabil navigasjon
