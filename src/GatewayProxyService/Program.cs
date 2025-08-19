@@ -4,6 +4,10 @@ using GatewayProxyService;
 using NATS.Client;
 using OSim.Shared.Messages;
 
+// Cache for latest navigation data
+NavigationData? lastNavigationData = null;
+object navDataLock = new();
+
 // Load static routes catalog at startup (types in Routes.cs)
 var routesFile = Path.Combine(AppContext.BaseDirectory, "Data", "routes.json");
 var routesRaw = JsonSerializer.Deserialize<List<RouteRaw>>(File.ReadAllText(routesFile)) ?? new();
@@ -192,8 +196,28 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, IConnection na
 
 app.MapGet("/api/simulator/destination", () =>
 {
-    // Simple placeholder - in real implementation this would track journey progress
-    return Results.Ok(new { hasDestination = false });
+    NavigationData? navData;
+    lock (navDataLock)
+    {
+        navData = lastNavigationData;
+    }
+
+    if (navData == null)
+    {
+        // No data available yet
+        return Results.Ok(new { hasDestination = false });
+    }
+
+    // Return destination status based on cached navigation data
+    return Results.Ok(new
+    {
+        hasDestination = navData.HasDestination,
+        targetLatitude = navData.TargetLatitude,
+        targetLongitude = navData.TargetLongitude,
+        distanceNm = (double?)null, // Could calculate this if needed
+        etaMinutes = (double?)null, // Could calculate this if needed  
+        hasArrived = navData.HasArrived
+    });
 });
 
 app.MapGet("/api/simulator/nav", () =>
@@ -250,6 +274,24 @@ app.Map("/ws/nav", async context =>
             {
                 if (ws.State != System.Net.WebSockets.WebSocketState.Open) return;
                 var json = Encoding.UTF8.GetString(a.Message.Data);
+
+                // Cache navigation data for API endpoint
+                try
+                {
+                    var navData = JsonSerializer.Deserialize<NavigationData>(json);
+                    if (navData != null)
+                    {
+                        lock (navDataLock)
+                        {
+                            lastNavigationData = navData;
+                        }
+                    }
+                }
+                catch (Exception cacheEx)
+                {
+                    app.Logger.LogDebug("Navigation data caching failed: {Message}", cacheEx.Message);
+                }
+
                 var buffer = Encoding.UTF8.GetBytes(json);
                 _ = ws.SendAsync(buffer, System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token);
             }

@@ -205,7 +205,11 @@ namespace SimulatorService
                         SpeedKnots: _engine.Speed,
                         HeadingDegrees: _engine.Heading,
                         CourseOverGroundDegrees: _engine.Heading, // placeholder dersom COG ikke beregnes separat
-                        IsAnchored: _engine.IsAnchored
+                        IsAnchored: _engine.IsAnchored,
+                        HasDestination: _engine.HasDestination,
+                        TargetLatitude: _engine.TargetLatitude,
+                        TargetLongitude: _engine.TargetLongitude,
+                        HasArrived: _engine.HasArrived
                     );
 
                     var json = JsonSerializer.Serialize(navigationData);

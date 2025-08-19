@@ -8,5 +8,10 @@ public sealed record NavigationData(
     double SpeedKnots,
     double HeadingDegrees,
     double CourseOverGroundDegrees,
-    bool IsAnchored = false
+    bool IsAnchored = false,
+    // Destinasjonsinformasjon for frontend
+    bool HasDestination = false,
+    double? TargetLatitude = null,
+    double? TargetLongitude = null,
+    bool HasArrived = false
 );
