@@ -173,6 +173,25 @@ namespace SimulatorService
                     }
                 });
 
+                // Abonner på kurskommandoer
+                var courseSubscription = natsConnection.SubscribeAsync("sim.commands.setcourse", (sender, args) =>
+                {
+                    try
+                    {
+                        var json = System.Text.Encoding.UTF8.GetString(args.Message.Data);
+                        var command = JsonSerializer.Deserialize<SetCourseCommand>(json);
+                        if (command != null)
+                        {
+                            _engine.SetDesiredCourse(command.TargetCourseDegrees);
+                            _logger.LogInformation($"Mottok kurskommando: {command.TargetCourseDegrees:F1}°");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Feil ved behandling av kurskommando: {ex.Message}");
+                    }
+                });
+
                 int tick = 0;
                 while (!stoppingToken.IsCancellationRequested)
                 {

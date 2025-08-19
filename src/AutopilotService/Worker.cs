@@ -17,10 +17,10 @@ public class Worker : BackgroundService
     private int _currentWaypointIndex = 0;
     private bool _wasAnchored = false; // For å spore anker-tilstand
 
-    // PID-konstanter for kursregulering
-    private const double Kp = 2.0;
-    private const double Ki = 0.1;
-    private const double Kd = 0.5;
+    // PID-konstanter for kursregulering (justert for mer stabil navigasjon)
+    private const double Kp = 0.8;  // Redusert fra 2.0 for mindre aggressiv respons
+    private const double Ki = 0.05; // Redusert fra 0.1 for mindre integral wind-up
+    private const double Kd = 0.2;  // Redusert fra 0.5 for mindre oscillasjon
 
     public Worker(ILogger<Worker> logger)
     {
@@ -35,6 +35,8 @@ public class Worker : BackgroundService
         _integralError = 0.0;
         _targetCourse = 0.0;
         _targetSpeed = 0.0;
+        // Tilbakestill anker-tilstand så den kan settes på nytt
+        _wasAnchored = false;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -192,9 +194,22 @@ public class Worker : BackgroundService
                             _routeWaypoints = waypoints;
                             _currentWaypointIndex = 0;
 
-                            _targetCourse = CalculateBearing(_lastNavData?.Latitude ?? 0, _lastNavData?.Longitude ?? 0,
-                                                           waypoints[0].lat, waypoints[0].lon);
+                            double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default til Oslo havn hvis ikke tilgjengelig
+                            double currentLon = _lastNavData?.Longitude ?? 10.5017;
+
+                            _targetCourse = CalculateBearing(currentLat, currentLon, waypoints[0].lat, waypoints[0].lon);
                             _logger.LogInformation($"AutopilotService: Mottok rute med {waypoints.Count} waypoints, setter kurs mot første waypoint: {_targetCourse:F1}°");
+
+                            // Send umiddelbar kurs-kommando til SimulatorService
+                            var courseCommand = new SetCourseCommand(DateTime.UtcNow, _targetCourse);
+                            var courseJson = JsonSerializer.Serialize(courseCommand);
+                            natsConnection.Publish("sim.commands.setcourse", System.Text.Encoding.UTF8.GetBytes(courseJson));
+                            _logger.LogInformation($"AutopilotService: Sender umiddelbar kurs-kommando: {_targetCourse:F1}°");
+
+                            // Heis ankeret umiddelbart når ny rute startes
+                            SendAnchorCommand(natsConnection, false);
+                            _wasAnchored = false;
+                            _logger.LogInformation("AutopilotService: Heiser anker for ny rute");
                         }
                     }
 
@@ -207,6 +222,55 @@ public class Worker : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError($"AutopilotService: Feil ved behandling av rute-kommando: {ex.Message}");
+                }
+            });
+
+            // Abonner på destinasjons-kommandoer
+            var destinationSubscription = natsConnection.SubscribeAsync("sim.commands.destination", (sender, args) =>
+            {
+                try
+                {
+                    string message = System.Text.Encoding.UTF8.GetString(args.Message.Data);
+                    var destCommand = JsonSerializer.Deserialize<JsonElement>(message);
+
+                    if (destCommand.TryGetProperty("latitude", out var latElement) &&
+                        destCommand.TryGetProperty("longitude", out var lonElement))
+                    {
+                        double destLat = latElement.GetDouble();
+                        double destLon = lonElement.GetDouble();
+
+                        // Nullstill alle rutetilstandsvariabler for ny destinasjon
+                        ResetRouteState();
+                        _routeWaypoints = new List<(double lat, double lon)> { (destLat, destLon) };
+                        _currentWaypointIndex = 0;
+
+                        double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default til Oslo havn hvis ikke tilgjengelig
+                        double currentLon = _lastNavData?.Longitude ?? 10.5017;
+
+                        _targetCourse = CalculateBearing(currentLat, currentLon, destLat, destLon);
+                        _logger.LogInformation($"AutopilotService: Mottok destinasjon ({destLat:F5}, {destLon:F5}), setter kurs: {_targetCourse:F1}°");
+
+                        // Send umiddelbar kurs-kommando til SimulatorService
+                        var courseCommand = new SetCourseCommand(DateTime.UtcNow, _targetCourse);
+                        var courseJson = JsonSerializer.Serialize(courseCommand);
+                        natsConnection.Publish("sim.commands.setcourse", System.Text.Encoding.UTF8.GetBytes(courseJson));
+                        _logger.LogInformation($"AutopilotService: Sender umiddelbar kurs-kommando: {_targetCourse:F1}°");
+
+                        // Heis ankeret umiddelbart når ny destinasjon settes
+                        SendAnchorCommand(natsConnection, false);
+                        _wasAnchored = false;
+                        _logger.LogInformation("AutopilotService: Heiser anker for ny destinasjon");
+                    }
+
+                    if (destCommand.TryGetProperty("cruiseSpeedKnots", out var speedElement))
+                    {
+                        _targetSpeed = speedElement.GetDouble();
+                        _logger.LogInformation($"AutopilotService: Setter cruise-fart til {_targetSpeed:F1} knop");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"AutopilotService: Feil ved behandling av destinasjons-kommando: {ex.Message}");
                 }
             });
 
@@ -241,8 +305,8 @@ public class Worker : BackgroundService
                         double distanceToWaypoint = CalculateDistance(_lastNavData.Latitude, _lastNavData.Longitude,
                                                                      currentWaypoint.lat, currentWaypoint.lon);
 
-                        // Hvis vi er nær nok waypoint (50 meter), gå til neste
-                        if (distanceToWaypoint < 50.0)
+                        // Hvis vi er nær nok waypoint (20 meter), gå til neste - redusert fra 50m for mer presis navigasjon
+                        if (distanceToWaypoint < 20.0)
                         {
                             _currentWaypointIndex++;
                             _logger.LogInformation($"AutopilotService: Nådde waypoint {_currentWaypointIndex}, {_routeWaypoints.Count - _currentWaypointIndex} waypoints igjen");
@@ -260,6 +324,10 @@ public class Worker : BackgroundService
                                 // Rute fullført - bruk reset-metoden
                                 _logger.LogInformation("AutopilotService: Rute fullført!");
                                 ResetRouteState();
+                                // Senk ankeret når rute er fullført
+                                SendAnchorCommand(natsConnection, true);
+                                _wasAnchored = true;
+                                _logger.LogInformation("AutopilotService: Anker senket - rute fullført");
                             }
                         }
                         else
@@ -313,7 +381,7 @@ public class Worker : BackgroundService
                     }
                 }
 
-                await Task.Delay(500, stoppingToken); // 2 Hz regulering
+                await Task.Delay(1000, stoppingToken); // 1 Hz regulering for mer stabil navigasjon
             }
         }
     }
