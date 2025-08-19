@@ -27,6 +27,16 @@ public class Worker : BackgroundService
         _logger = logger;
     }
 
+    private void ResetRouteState()
+    {
+        _routeWaypoints = null;
+        _currentWaypointIndex = 0;
+        _lastError = 0.0;
+        _integralError = 0.0;
+        _targetCourse = 0.0;
+        _targetSpeed = 0.0;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         IConnection? natsConnection = null;
@@ -140,6 +150,20 @@ public class Worker : BackgroundService
                 }
             });
 
+            // Abonner på reset-kommandoer
+            var resetSubscription = natsConnection.SubscribeAsync("sim.commands.reset", (sender, args) =>
+            {
+                try
+                {
+                    ResetRouteState();
+                    _logger.LogInformation("AutopilotService: Mottok reset-kommando, nullstiller alle tilstandsvariabler");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"AutopilotService: Feil ved behandling av reset-kommando: {ex.Message}");
+                }
+            });
+
             // Abonner på rute-kommandoer
             var routeSubscription = natsConnection.SubscribeAsync("sim.commands.route", (sender, args) =>
             {
@@ -163,8 +187,11 @@ public class Worker : BackgroundService
 
                         if (waypoints.Count > 0)
                         {
+                            // Nullstill alle rutetilstandsvariabler for ny rute
+                            ResetRouteState();
                             _routeWaypoints = waypoints;
                             _currentWaypointIndex = 0;
+
                             _targetCourse = CalculateBearing(_lastNavData?.Latitude ?? 0, _lastNavData?.Longitude ?? 0,
                                                            waypoints[0].lat, waypoints[0].lon);
                             _logger.LogInformation($"AutopilotService: Mottok rute med {waypoints.Count} waypoints, setter kurs mot første waypoint: {_targetCourse:F1}°");
@@ -189,19 +216,22 @@ public class Worker : BackgroundService
                 if (_lastNavData != null)
                 {
                     // Håndter anker-tilstand basert på om vi har aktiv rute
-                    bool shouldBeAnchored = _routeWaypoints == null || _currentWaypointIndex >= _routeWaypoints.Count;
+                    bool hasActiveRoute = _routeWaypoints != null && _currentWaypointIndex < _routeWaypoints.Count;
+                    bool shouldBeAnchored = !hasActiveRoute;
 
                     if (shouldBeAnchored && !_wasAnchored)
                     {
                         // Senk ankeret
                         SendAnchorCommand(natsConnection, true);
                         _wasAnchored = true;
+                        _logger.LogInformation("AutopilotService: Anker senket - ingen aktiv rute");
                     }
                     else if (!shouldBeAnchored && _wasAnchored)
                     {
                         // Heis ankeret
                         SendAnchorCommand(natsConnection, false);
                         _wasAnchored = false;
+                        _logger.LogInformation("AutopilotService: Anker heist - aktiv rute startet");
                     }
 
                     // Sjekk waypoint-navigasjon
@@ -227,10 +257,9 @@ public class Worker : BackgroundService
                             }
                             else
                             {
-                                // Rute fullført
+                                // Rute fullført - bruk reset-metoden
                                 _logger.LogInformation("AutopilotService: Rute fullført!");
-                                _targetSpeed = 0.0; // Stopp
-                                _routeWaypoints = null; // Nullstill rute
+                                ResetRouteState();
                             }
                         }
                         else

@@ -69,14 +69,21 @@ namespace SimulatorService
         {
             _targetLat = lat;
             _targetLon = lon;
-            HasArrived = false;
+            HasArrived = false; // Alltid nullstill ankomststatus ved ny destinasjon
         }
 
         public void ClearDestination()
         {
             _targetLat = null;
             _targetLon = null;
-            HasArrived = false;
+            HasArrived = false; // Nullstill ankomststatus når destinasjon fjernes
+        }
+
+        public void ResetNavigationState()
+        {
+            ClearDestination();
+            _desiredHeading = _heading; // Behold nåværende heading som ønsket
+            _desiredSpeed = 0.0; // Stopp
         }
 
         public void SetDesiredHeading(double heading)

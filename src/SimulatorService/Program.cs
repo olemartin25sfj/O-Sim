@@ -185,6 +185,14 @@ app.MapPost("/api/simulator/journey", async (HttpContext context, SimulatorEngin
         if ((routePoints == null || routePoints.Count == 0) && (endLat == null || endLon == null))
             return Results.BadRequest("Enten endLatitude/endLongitude eller routeWaypoints må settes");
 
+        // Nullstill navigasjonstilstand før ny rute startes
+        engine.ResetNavigationState();
+
+        // Send reset-kommando til AutopilotService for å nullstille dets tilstand
+        var resetCommand = new { timestampUtc = DateTime.UtcNow, reason = "New journey started" };
+        var resetJson = JsonSerializer.Serialize(resetCommand);
+        nats.Publish("sim.commands.reset", System.Text.Encoding.UTF8.GetBytes(resetJson));
+
         if (startLat.HasValue && startLon.HasValue)
         {
             engine.SetInitialPosition(startLat.Value, startLon.Value);
