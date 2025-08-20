@@ -209,13 +209,30 @@ app.MapGet("/api/simulator/destination", () =>
     }
 
     // Return destination status based on cached navigation data
+    double? distanceNm = null;
+    double? etaMinutes = null;
+
+    // Calculate distance if we have destination
+    if (navData.HasDestination && navData.TargetLatitude.HasValue && navData.TargetLongitude.HasValue)
+    {
+        distanceNm = CalculateDistanceNauticalMiles(
+            navData.Latitude, navData.Longitude,
+            navData.TargetLatitude.Value, navData.TargetLongitude.Value);
+
+        // Calculate ETA if ship is moving
+        if (navData.SpeedKnots > 0.1)
+        {
+            etaMinutes = (distanceNm / navData.SpeedKnots) * 60; // Convert hours to minutes
+        }
+    }
+
     return Results.Ok(new
     {
         hasDestination = navData.HasDestination,
         targetLatitude = navData.TargetLatitude,
         targetLongitude = navData.TargetLongitude,
-        distanceNm = (double?)null, // Could calculate this if needed
-        etaMinutes = (double?)null, // Could calculate this if needed  
+        distanceNm = distanceNm,
+        etaMinutes = etaMinutes,
         hasArrived = navData.HasArrived
     });
 });
@@ -369,3 +386,29 @@ app.Map("/ws/nav", async context =>
 });
 
 app.Run("http://0.0.0.0:5000");
+
+// Helper method to calculate distance in nautical miles
+static double CalculateDistanceNauticalMiles(double lat1, double lon1, double lat2, double lon2)
+{
+    // Convert latitude and longitude from degrees to radians
+    double lat1Rad = lat1 * Math.PI / 180.0;
+    double lon1Rad = lon1 * Math.PI / 180.0;
+    double lat2Rad = lat2 * Math.PI / 180.0;
+    double lon2Rad = lon2 * Math.PI / 180.0;
+
+    // Haversine formula
+    double deltaLat = lat2Rad - lat1Rad;
+    double deltaLon = lon2Rad - lon1Rad;
+
+    double a = Math.Sin(deltaLat / 2) * Math.Sin(deltaLat / 2) +
+               Math.Cos(lat1Rad) * Math.Cos(lat2Rad) *
+               Math.Sin(deltaLon / 2) * Math.Sin(deltaLon / 2);
+
+    double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+
+    // Earth's radius in nautical miles (approximately 3440.065 nautical miles)
+    double earthRadiusNm = 3440.065;
+    double distanceNm = earthRadiusNm * c;
+
+    return distanceNm;
+}
