@@ -118,12 +118,6 @@ For å kjøre en enkelt tjeneste lokalt:
    docker-compose up nats
    ```
 
-2. Kjør tjenesten lokalt:
-   ```bash
-   cd src/SimulatorService
-   dotnet run
-   ```
-
 ### Utviklingsressurser
 
 - [Systemarkitektur](Docs/Systemarkitektur.md) - Detaljert arkitekturbeskrivelse
