@@ -191,7 +191,7 @@ public class Worker : BackgroundService
                             _routeWaypoints = waypoints;
                             _currentWaypointIndex = 0;
 
-                            double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default til Oslo havn hvis ikke tilgjengelig
+                            double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default 
                             double currentLon = _lastNavData?.Longitude ?? 10.5017;
 
                             _targetCourse = CalculateBearing(currentLat, currentLon, waypoints[0].lat, waypoints[0].lon);
@@ -240,7 +240,7 @@ public class Worker : BackgroundService
                         _routeWaypoints = new List<(double lat, double lon)> { (destLat, destLon) };
                         _currentWaypointIndex = 0;
 
-                        double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default til Oslo havn hvis ikke tilgjengelig
+                        double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default
                         double currentLon = _lastNavData?.Longitude ?? 10.5017;
 
                         _targetCourse = CalculateBearing(currentLat, currentLon, destLat, destLon);
@@ -295,8 +295,8 @@ public class Worker : BackgroundService
                         double distanceToWaypoint = CalculateDistance(_lastNavData.Latitude, _lastNavData.Longitude,
                                                                      currentWaypoint.lat, currentWaypoint.lon);
 
-                        // Hvis vi er nær nok waypoint (20 meter), gå til neste - redusert fra 50m for mer presis navigasjon
-                        if (distanceToWaypoint < 20.0)
+                        // Hvis vi er nær nok waypoint (10 meter), gå til neste - redusert fra 50m for mer presis navigasjon
+                        if (distanceToWaypoint < 10.0)
                         {
                             _currentWaypointIndex++;
                             _logger.LogInformation($"AutopilotService: Nådde waypoint {_currentWaypointIndex}, {_routeWaypoints.Count - _currentWaypointIndex} waypoints igjen");
