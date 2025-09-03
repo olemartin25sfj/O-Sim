@@ -12,7 +12,7 @@ var activeAlarms = new Dictionary<string, AlarmTriggered>();
 var builder = WebApplication.CreateBuilder(args);
 
 var optionsSection = builder.Configuration.GetSection("AlarmOptions");
-double overspeed = optionsSection.GetValue("OverspeedThresholdKnots", 20.0);
+double overspeed = optionsSection.GetValue("OverspeedThresholdKnots", 22.0);
 double offCourse = optionsSection.GetValue("OffCourseThresholdDegrees", 15.0);
 double highWind = optionsSection.GetValue("HighWindThresholdKnots", 25.0);
 double strongCurrent = optionsSection.GetValue("StrongCurrentThresholdKnots", 4.0);
