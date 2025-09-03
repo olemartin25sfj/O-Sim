@@ -191,7 +191,7 @@ public class Worker : BackgroundService
                             _routeWaypoints = waypoints;
                             _currentWaypointIndex = 0;
 
-                            double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default 
+                            double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default til Horten havn
                             double currentLon = _lastNavData?.Longitude ?? 10.5017;
 
                             _targetCourse = CalculateBearing(currentLat, currentLon, waypoints[0].lat, waypoints[0].lon);
@@ -240,7 +240,7 @@ public class Worker : BackgroundService
                         _routeWaypoints = new List<(double lat, double lon)> { (destLat, destLon) };
                         _currentWaypointIndex = 0;
 
-                        double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default
+                        double currentLat = _lastNavData?.Latitude ?? 59.4135;  // Default til Horten havn
                         double currentLon = _lastNavData?.Longitude ?? 10.5017;
 
                         _targetCourse = CalculateBearing(currentLat, currentLon, destLat, destLon);
