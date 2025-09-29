@@ -4,15 +4,14 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy solution/project files for cache
-COPY OSim.sln ./
-COPY src/AutopilotService/AutopilotService.csproj src/AutopilotService/
-COPY src/OSim.Shared.Messages/OSim.Shared.Messages.csproj src/OSim.Shared.Messages/
+# Copy project files for caching
+COPY AutopilotService/AutopilotService.csproj AutopilotService/
+COPY OSim.Shared.Messages/OSim.Shared.Messages.csproj OSim.Shared.Messages/
 
-RUN dotnet restore
+RUN dotnet restore AutopilotService/AutopilotService.csproj
 
 COPY . .
-RUN dotnet publish src/AutopilotService/AutopilotService.csproj -c Release -o /app/publish --no-restore
+RUN dotnet publish AutopilotService/AutopilotService.csproj -c Release -o /app/publish --no-restore
 
 FROM runtime AS final
 WORKDIR /app

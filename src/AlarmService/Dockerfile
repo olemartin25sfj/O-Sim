@@ -4,17 +4,16 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy solution and project files first for better caching
-COPY OSim.sln ./
-COPY src/AlarmService/AlarmService.csproj src/AlarmService/
-COPY src/OSim.Shared.Messages/OSim.Shared.Messages.csproj src/OSim.Shared.Messages/
+# Copy project files for caching (paths are relative to the build context ./src)
+COPY AlarmService/AlarmService.csproj AlarmService/
+COPY OSim.Shared.Messages/OSim.Shared.Messages.csproj OSim.Shared.Messages/
 
-# Restore dependencies
-RUN dotnet restore
+# Restore dependencies for the specific project
+RUN dotnet restore AlarmService/AlarmService.csproj
 
 # Copy everything and publish
 COPY . .
-RUN dotnet publish src/AlarmService/AlarmService.csproj -c Release -o /app/publish --no-restore
+RUN dotnet publish AlarmService/AlarmService.csproj -c Release -o /app/publish --no-restore
 
 FROM runtime AS final
 WORKDIR /app
