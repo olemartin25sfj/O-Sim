@@ -20,25 +20,32 @@ jobs:
       matrix:
         service:
           - name: AlarmService
-            dockerfile: src/AlarmService/Dockerfile
+            context: src/AlarmService
+            file: Dockerfile
             image: o-sim-alarmservice
           - name: AutopilotService
-            dockerfile: src/AutopilotService/Dockerfile
+            context: src/AutopilotService
+            file: Dockerfile
             image: o-sim-autopilotservice
           - name: EnvironmentService
-            dockerfile: src/EnvironmentService/Dockerfile
+            context: src/EnvironmentService
+            file: Dockerfile
             image: o-sim-environmentservice
           - name: LoggerService
-            dockerfile: src/LoggerService/Dockerfile
+            context: src/LoggerService
+            file: Dockerfile
             image: o-sim-loggerservice
           - name: SimulatorService
-            dockerfile: src/SimulatorService/Dockerfile
+            context: src/SimulatorService
+            file: Dockerfile
             image: o-sim-simulatorservice
           - name: GatewayProxyService
-            dockerfile: src/GatewayProxyService/Dockerfile
+            context: src/GatewayProxyService
+            file: Dockerfile
             image: o-sim-gatewayproxy
           - name: WebDashboard
-            dockerfile: src/Frontend/WebDashboard/Dockerfile
+            context: src/Frontend/WebDashboard
+            file: Dockerfile
             image: o-sim-webdashboard
 
     steps:
@@ -63,8 +70,8 @@ jobs:
       - name: Build and push image for ${{ matrix.service.name }}
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ${{ matrix.service.dockerfile }}
+          context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.file }}
           push: true
           platforms: linux/amd64,linux/arm64
           # Tag with commit sha, latest, and git tag (only when the workflow is triggered by a tag)
