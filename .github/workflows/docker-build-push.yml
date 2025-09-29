@@ -66,8 +66,19 @@ jobs:
           file: ${{ matrix.service.dockerfile }}
           push: true
           platforms: linux/amd64,linux/arm64
+          # Tag with commit sha, latest, and git tag (only when the workflow is triggered by a tag)
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.service.image }}:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.service.image }}:latest
+            ${{ startsWith(github.ref, 'refs/tags/') && format('ghcr.io/{0}/{1}:{2}', github.repository_owner, matrix.service.image, github.ref_name) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Scan pushed image with Trivy (HIGH/CRITICAL -> fail)
+        # Use the official Trivy image to scan the just-pushed image by sha tag
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/${{ matrix.service.image }}:${{ github.sha }}
+          echo "Scanning $IMAGE for HIGH/CRITICAL vulnerabilities..."
+          docker run --rm --security-opt seccomp=unconfined aquasec/trivy:0.43.1 image --severity HIGH,CRITICAL --exit-code 1 "$IMAGE"
+        env:
+          DOCKER_CLI_EXPERIMENTAL: enabled

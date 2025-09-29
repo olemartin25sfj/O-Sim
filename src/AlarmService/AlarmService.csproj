@@ -6,7 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OSim.Shared.Messages\OSim.Shared.Messages.csproj" />
-    <PackageReference Include="NATS.Client" Version="1.1.0" />
+  <PackageReference Include="NATS.Client" Version="1.1.8" />
   </ItemGroup>
   <ItemGroup>
     <None Update="appsettings.json">
