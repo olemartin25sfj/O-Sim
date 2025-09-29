@@ -20,28 +20,28 @@ jobs:
       matrix:
         service:
           - name: AlarmService
-            context: src/AlarmService
-            file: Dockerfile
+            context: src
+            file: AlarmService/Dockerfile
             image: o-sim-alarmservice
           - name: AutopilotService
-            context: src/AutopilotService
-            file: Dockerfile
+            context: src
+            file: AutopilotService/Dockerfile
             image: o-sim-autopilotservice
           - name: EnvironmentService
-            context: src/EnvironmentService
-            file: Dockerfile
+            context: src
+            file: EnvironmentService/Dockerfile
             image: o-sim-environmentservice
           - name: LoggerService
-            context: src/LoggerService
-            file: Dockerfile
+            context: src
+            file: LoggerService/Dockerfile
             image: o-sim-loggerservice
           - name: SimulatorService
-            context: src/SimulatorService
-            file: Dockerfile
+            context: src
+            file: SimulatorService/Dockerfile
             image: o-sim-simulatorservice
           - name: GatewayProxyService
-            context: src/GatewayProxyService
-            file: Dockerfile
+            context: src
+            file: GatewayProxyService/Dockerfile
             image: o-sim-gatewayproxy
           - name: WebDashboard
             context: src/Frontend/WebDashboard
