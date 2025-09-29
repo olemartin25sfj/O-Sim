@@ -71,7 +71,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.service.context }}
-          file: ${{ matrix.service.file }}
+          # Make Dockerfile path explicit so buildx can read it reliably in Actions
+          file: ${{ matrix.service.context }}/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           # Tag with commit sha, latest, and git tag (only when the workflow is triggered by a tag)
@@ -82,6 +83,11 @@ jobs:
           # Note: disabled build cache-from/cache-to due to intermittent 'failed to calculate checksum' errors
           # cache-from: type=gha
           # cache-to: type=gha,mode=max
+
+      - name: Debug: list build context files
+        run: |
+          echo "Listing files in context: ${{ matrix.service.context }}"
+          ls -la ${{ matrix.service.context }} || true
 
       - name: Scan pushed image with Trivy (HIGH/CRITICAL -> fail)
         if: startsWith(github.ref, 'refs/tags/')
