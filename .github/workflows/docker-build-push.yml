@@ -67,6 +67,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Debug: list repo root and build context files
+        run: |
+          echo "Repository root: $GITHUB_WORKSPACE"
+          echo "Listing files in repository root (top-level)"
+          ls -la $GITHUB_WORKSPACE || true
+          echo "\nListing files in context: ${{ matrix.service.context }}"
+          ls -la ${{ matrix.service.context }} || true
+
+      - name: Debug: show Dockerfile contents (if present)
+        run: |
+          DOCKERFILE_PATH=${{ matrix.service.context }}/Dockerfile
+          echo "Checking for Dockerfile at: $DOCKERFILE_PATH"
+          if [ -f "$DOCKERFILE_PATH" ]; then
+            echo "--- Dockerfile content start ---"
+            sed -n '1,200p' "$DOCKERFILE_PATH" || true
+            echo "--- Dockerfile content end ---"
+          else
+            echo "Dockerfile not found at $DOCKERFILE_PATH"
+            ls -la ${{ matrix.service.context }} || true
+          fi
+
       - name: Build and push image for ${{ matrix.service.name }}
         uses: docker/build-push-action@v5
         with:
@@ -75,19 +96,27 @@ jobs:
           file: ${{ matrix.service.context }}/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
-          # Tag with commit sha, latest, and git tag (only when the workflow is triggered by a tag)
+          # Tag with commit sha and latest. If this is a tag event we'll add the tag later.
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.service.image }}:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.service.image }}:latest
-            ${{ startsWith(github.ref, 'refs/tags/') && format('ghcr.io/{0}/{1}:{2}', github.repository_owner, matrix.service.image, github.ref_name) || '' }}
           # Note: disabled build cache-from/cache-to due to intermittent 'failed to calculate checksum' errors
           # cache-from: type=gha
           # cache-to: type=gha,mode=max
 
-      - name: Debug: list build context files
+      - name: Tag pushed image with git tag and push
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          echo "Listing files in context: ${{ matrix.service.context }}"
-          ls -la ${{ matrix.service.context }} || true
+          IMAGE_BASE=ghcr.io/${{ github.repository_owner }}/${{ matrix.service.image }}
+          SHA_TAG=${{ github.sha }}
+          TAG_NAME=${{ github.ref_name }}
+          SHA_IMAGE="$IMAGE_BASE:$SHA_TAG"
+          TAG_IMAGE="$IMAGE_BASE:$TAG_NAME"
+          echo "Pulling image $SHA_IMAGE to ensure it's available locally for tagging"
+          docker pull "$SHA_IMAGE" || true
+          echo "Tagging $SHA_IMAGE as $TAG_IMAGE and pushing"
+          docker tag "$SHA_IMAGE" "$TAG_IMAGE"
+          docker push "$TAG_IMAGE"
 
       - name: Scan pushed image with Trivy (HIGH/CRITICAL -> fail)
         if: startsWith(github.ref, 'refs/tags/')
