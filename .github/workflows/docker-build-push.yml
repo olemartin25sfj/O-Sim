@@ -72,7 +72,8 @@ jobs:
           echo "Repository root: $GITHUB_WORKSPACE"
           echo "Listing files in repository root (top-level)"
           ls -la $GITHUB_WORKSPACE || true
-          echo "\nListing files in context: ${{ matrix.service.context }}"
+          echo ""
+          echo "Listing files in context: ${{ matrix.service.context }}"
           ls -la ${{ matrix.service.context }} || true
 
       - name: Debug: show Dockerfile contents (if present)
