@@ -18,11 +18,29 @@ jobs:
               with:
                   dotnet-version: 8.0.x
 
-            - name: Restore dependencies
-              run: dotnet restore
+            - name: Restore dependencies (excluding WPF projects)
+              run: |
+                  dotnet restore OSim.sln \
+                    /p:EnableWindowsTargeting=true \
+                    /p:DisableWinExeOutputInference=true \
+                    --ignore-failed-sources \
+                    --configfile NuGet.Config
 
-            - name: Build
-              run: dotnet build --no-restore
+            - name: Build (excluding WPF projects)
+              run: |
+                  dotnet build OSim.sln \
+                    --no-restore \
+                    -c Release \
+                    /p:EnableWindowsTargeting=true \
+                    /p:DisableWinExeOutputInference=true \
+                    --ignore-failed-sources \
+                    /p:BuildingInsideVisualStudio=false
 
             - name: Test
-              run: dotnet test --no-build --verbosity normal
+              run: |
+                  dotnet test OSim.sln \
+                    --no-build \
+                    --verbosity normal \
+                    /p:EnableWindowsTargeting=true \
+                    /p:DisableWinExeOutputInference=true \
+                    --filter "FullyQualifiedName!~WpfClient"
