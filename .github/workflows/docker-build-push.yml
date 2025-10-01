@@ -93,7 +93,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.service.context }}
-          file: ${{ matrix.service.context }}/Dockerfile
+          file: ${{ matrix.service.context }}/${{ matrix.service.file }}
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
