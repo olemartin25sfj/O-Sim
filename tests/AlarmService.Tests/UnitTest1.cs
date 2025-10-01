@@ -1,4 +1,6 @@
-﻿namespace AlarmService.Tests;
+﻿using Xunit;
+
+namespace AlarmService.Tests;
 
 public class UnitTest1
 {

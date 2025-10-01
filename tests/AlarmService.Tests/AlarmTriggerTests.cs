@@ -12,7 +12,7 @@ public class AlarmTriggerTests
         double actualSpeed = 15.0;
 
         // Act
-        bool shouldTrigger = false; // TODO: Implement actual alarm logic
+        bool shouldTrigger = AlarmService.AlarmEvaluator.ShouldTrigger(actualSpeed, speedThreshold);
 
         // Assert
         Assert.True(shouldTrigger, "Alarm should trigger when speed exceeds threshold");
